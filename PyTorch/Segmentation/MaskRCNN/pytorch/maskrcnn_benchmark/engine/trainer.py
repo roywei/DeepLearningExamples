@@ -54,6 +54,7 @@ def do_train(
     use_amp,
     cfg,
     dllogger,
+    args,
     per_iter_end_callback_fn=None,
 ):
     dllogger.log(step="PARAMETER", data={"train_start": True})
@@ -114,7 +115,10 @@ def do_train(
                         "memory": torch.cuda.max_memory_allocated() / 1024.0 / 1024.0 }
             log_data.update(meters.get_dict())
             dllogger.log(step=(iteration,), data=log_data)
-
+            if args.local_rank==0:
+                args.writer.add_scalar('Loss/total_loss', losses_reduced.item(), iteration)
+                for k,v in loss_dict_reduced.items():
+                    args.writer.add_scalar('Loss/'+k, v.item(), iteration)
         if cfg.SAVE_CHECKPOINT:
             if iteration % checkpoint_period == 0:
                 checkpointer.save("model_{:07d}".format(iteration), **arguments)

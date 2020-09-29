@@ -11,6 +11,9 @@ import argparse
 import os
 import logging
 import functools
+import distutils.util
+from collections import OrderedDict
+import datetime
 
 import torch
 from maskrcnn_benchmark.config import cfg
@@ -32,6 +35,7 @@ from maskrcnn_benchmark.utils.logger import format_step
 #import dllogger as DLLogger
 import dllogger
 from maskrcnn_benchmark.utils.logger import format_step
+from torch.utils.tensorboard import SummaryWriter
 
 # See if we can use apex.DistributedDataParallel instead of the torch default,
 # and enable mixed-precision via apex.amp
@@ -48,8 +52,8 @@ except ImportError:
     print('Use APEX for better performance')
     use_apex_ddp = False
 
-def test_and_exchange_map(tester, model, distributed):
-    results = tester(model=model, distributed=distributed)
+def test_and_exchange_map(tester, model, distributed, args):
+    results = tester(model=model, distributed=distributed, args=args)
 
     # main process only
     if is_main_process():
@@ -70,18 +74,20 @@ def test_and_exchange_map(tester, model, distributed):
 
     return bbox_map, segm_map
 
-def mlperf_test_early_exit(iteration, iters_per_epoch, tester, model, distributed, min_bbox_map, min_segm_map):
+def mlperf_test_early_exit(iteration, iters_per_epoch, tester, model, distributed, min_bbox_map, min_segm_map,args):
     if iteration > 0 and iteration % iters_per_epoch == 0:
         epoch = iteration // iters_per_epoch
 
         dllogger.log(step="PARAMETER", data={"eval_start": True})
 
-        bbox_map, segm_map = test_and_exchange_map(tester, model, distributed)
+        bbox_map, segm_map = test_and_exchange_map(tester, model, distributed, args)
 
         # necessary for correctness
         model.train()
         dllogger.log(step=(iteration, epoch, ), data={"BBOX_mAP": bbox_map, "MASK_mAP": segm_map})
-
+        if args.local_rank==0:
+            args.writer.add_scalar('BBOX_mAP', bbox_map, epoch)
+            args.writer.add_scalar('MASK_mAP', segm_map, epoch)
         # terminating condition
         if bbox_map >= min_bbox_map and segm_map >= min_segm_map:
             dllogger.log(step="PARAMETER", data={"target_accuracy_reached": True})
@@ -90,8 +96,10 @@ def mlperf_test_early_exit(iteration, iters_per_epoch, tester, model, distribute
     return False
 
 
-def train(cfg, local_rank, distributed, fp16, dllogger):
+def train(cfg, local_rank, distributed, fp16, dllogger, args):
     model = build_detection_model(cfg)
+    print(model)
+
     device = torch.device(cfg.MODEL.DEVICE)
     model.to(device)
 
@@ -145,11 +153,12 @@ def train(cfg, local_rank, distributed, fp16, dllogger):
         per_iter_callback_fn = functools.partial(
                 mlperf_test_early_exit,
                 iters_per_epoch=iters_per_epoch,
-                tester=functools.partial(test, cfg=cfg, dllogger=dllogger),
+                tester=functools.partial(test, cfg=cfg, dllogger=dllogger,args=args),
                 model=model,
                 distributed=distributed,
                 min_bbox_map=cfg.MIN_BBOX_MAP,
-                min_segm_map=cfg.MIN_MASK_MAP)
+                min_segm_map=cfg.MIN_MASK_MAP,
+                args=args)
     else:
         per_iter_callback_fn = None
 
@@ -165,12 +174,13 @@ def train(cfg, local_rank, distributed, fp16, dllogger):
         use_amp,
         cfg,
         dllogger,
+        args,
         per_iter_end_callback_fn=per_iter_callback_fn,
     )
 
     return model, iters_per_epoch
 
-def test_model(cfg, model, distributed, iters_per_epoch, dllogger):
+def test_model(cfg, model, distributed, iters_per_epoch, dllogger,args):
     if distributed:
         model = model.module
     torch.cuda.empty_cache()  # TODO check if it helps
@@ -198,6 +208,7 @@ def test_model(cfg, model, distributed, iters_per_epoch, dllogger):
             expected_results_sigma_tol=cfg.TEST.EXPECTED_RESULTS_SIGMA_TOL,
             output_folder=output_folder,
             dllogger=dllogger,
+            args=args	
         )
         synchronize()
         results.append(result)
@@ -207,6 +218,50 @@ def test_model(cfg, model, distributed, iters_per_epoch, dllogger):
         segm_map = map_results.results["segm"]['AP']
         dllogger.log(step=(cfg.SOLVER.MAX_ITER, cfg.SOLVER.MAX_ITER / iters_per_epoch,), data={"BBOX_mAP": bbox_map, "MASK_mAP": segm_map})
         dllogger.log(step=tuple(), data={"BBOX_mAP": bbox_map, "MASK_mAP": segm_map})
+        if args.local_rank==0:
+            args.writer.add_scalar('BBOX_mAP', bbox_map, cfg.SOLVER.MAX_ITER / iters_per_epoch)
+            args.writer.add_scalar('MASK_mAP', segm_map, cfg.SOLVER.MAX_ITER / iters_per_epoch)
+
+
+def save_path_formatter(args,cfg):
+    args.dataset=cfg.DATASETS.TRAIN[0]
+    args.lr=cfg.SOLVER.BASE_LR
+    args.batch_size=cfg.SOLVER.IMS_PER_BATCH
+    args.max_iter=cfg.SOLVER.MAX_ITER
+    args.backbone=cfg.MODEL.BACKBONE.CONV_BODY
+
+    args.pretrained=False
+    if cfg.MODEL.WEIGHT:
+        args.pretrained=True
+
+    args.block=cfg.MODEL.DECONV.BLOCK
+    args.block_fc=cfg.MODEL.DECONV.BLOCK_FC
+
+    args_dict = vars(args)
+    data_folder_name = args_dict['dataset']
+    folder_string = [data_folder_name]
+
+    key_map = OrderedDict()
+    key_map['backbone'] = ''
+    key_map['max_iter'] = 'max_iter'
+    key_map['lr']=''
+    key_map['batch_size']='bs'
+    key_map['pretrained']='pretrain'
+
+
+
+    for key, key2 in key_map.items():
+        value = args_dict[key]
+        if key2 is not '':
+            folder_string.append('{}:{}'.format(key2, value))
+        else:
+            folder_string.append('{}'.format(value))
+
+    save_path = ','.join(folder_string)
+    timestamp = datetime.datetime.now().strftime("%m-%d-%H:%M")
+    return os.path.join('checkpoints',save_path,timestamp)
+
+
 
 def main():
 
@@ -229,6 +284,7 @@ def main():
     parser.add_argument("--json-summary", help="Out file for DLLogger", default="dllogger.out",
                         type=str,
                         )
+    parser.add_argument("--debug", type=distutils.util.strtobool, default=False, help="debug")	
     parser.add_argument(
         "opts",
         help="Modify config options using the command-line",
@@ -263,6 +319,8 @@ def main():
     output_dir = cfg.OUTPUT_DIR
     if output_dir:
         mkdir(output_dir)
+    
+    args.log_dir=save_path_formatter(args,cfg)	
 
     logger = setup_logger("maskrcnn_benchmark", output_dir, get_rank())
     if is_main_process():
@@ -281,16 +339,19 @@ def main():
 
     dllogger.log(step="PARAMETER", data={"config":cfg})
     
+    if args.local_rank==0:	
+        args.writer = SummaryWriter(args.log_dir,flush_secs=30)
+
     if args.fp16:
         fp16 = True
     else:
         fp16 = False
 
-    model, iters_per_epoch = train(cfg, args.local_rank, args.distributed, fp16, dllogger)
+    model, iters_per_epoch = train(cfg, args.local_rank, args.distributed, fp16, dllogger, args)
 
     if not args.skip_test:
         if not cfg.PER_EPOCH_EVAL:
-            test_model(cfg, model, args.distributed, iters_per_epoch, dllogger)
+            test_model(cfg, model, args.distributed, iters_per_epoch, dllogger, args)
 
 
 if __name__ == "__main__":

@@ -42,3 +42,5 @@ SOLVER:
   IMS_PER_BATCH: 32
 TEST:
   IMS_PER_BATCH: 8
+PER_EPOCH_EVAL: True
+OUTPUT_DIR: "./outputs/baseline"

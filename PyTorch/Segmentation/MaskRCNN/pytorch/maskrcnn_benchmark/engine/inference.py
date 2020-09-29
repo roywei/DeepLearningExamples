@@ -15,11 +15,13 @@ from ..utils.comm import all_gather
 from ..utils.comm import synchronize
 
 
-def compute_on_dataset(model, data_loader, device):
+def compute_on_dataset(model, data_loader, device,args):
     model.eval()
     results_dict = {}
     cpu_device = torch.device("cpu")
     for i, batch in enumerate(tqdm(data_loader)):
+        if args.debug and i>10:
+            break
         images, targets, image_ids = batch
         images = images.to(device)
         with torch.no_grad():
@@ -64,7 +66,8 @@ def inference(
         expected_results_sigma_tol=4,
         output_folder=None,
         skip_eval=False,
-        dllogger=None
+        dllogger=None,
+        args=None
 ):
     # convert to a torch.device for efficiency
     device = torch.device(device)
@@ -76,7 +79,7 @@ def inference(
     dataset = data_loader.dataset
     dllogger.log(step="PARAMETER", data={"eval_dataset_name": dataset_name, "eval_num_samples":len(dataset)})
     start_time = time.time()
-    predictions = compute_on_dataset(model, data_loader, device)
+    predictions = compute_on_dataset(model, data_loader, device, args)
     # wait for all processes to complete before measuring the time
     synchronize()
     total_time = time.time() - start_time
