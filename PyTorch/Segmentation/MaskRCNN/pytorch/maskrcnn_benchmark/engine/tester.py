@@ -9,7 +9,7 @@ from maskrcnn_benchmark.engine.inference import inference
 from maskrcnn_benchmark.utils.miscellaneous import mkdir
 from maskrcnn_benchmark.utils.comm import synchronize
 
-def test(cfg, model, distributed, dllogger):
+def test(cfg, model, distributed, dllogger,args):
     if distributed:
         model = model.module
     torch.cuda.empty_cache()  # TODO check if it helps
@@ -37,6 +37,7 @@ def test(cfg, model, distributed, dllogger):
             expected_results_sigma_tol=cfg.TEST.EXPECTED_RESULTS_SIGMA_TOL,
             output_folder=output_folder,
             dllogger=dllogger,
+            args=args
         )
         synchronize()
         results.append(result)

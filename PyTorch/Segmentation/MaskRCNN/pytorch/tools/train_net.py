@@ -234,9 +234,6 @@ def save_path_formatter(args,cfg):
     if cfg.MODEL.WEIGHT:
         args.pretrained=True
 
-    args.block=cfg.MODEL.DECONV.BLOCK
-    args.block_fc=cfg.MODEL.DECONV.BLOCK_FC
-
     args_dict = vars(args)
     data_folder_name = args_dict['dataset']
     folder_string = [data_folder_name]
