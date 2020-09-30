@@ -2,7 +2,8 @@
 import torch
 from torch.nn import functional as F
 
-from maskrcnn_benchmark.layers import smooth_l1_loss
+
+from maskrcnn_benchmark.layers import GIoULoss
 from maskrcnn_benchmark.modeling.box_coder import BoxCoder
 from maskrcnn_benchmark.modeling.matcher import Matcher
 from maskrcnn_benchmark.structures.boxlist_ops import boxlist_iou
@@ -28,6 +29,7 @@ class FastRCNNLossComputation(object):
         self.proposal_matcher = proposal_matcher
         self.fg_bg_sampler = fg_bg_sampler
         self.box_coder = box_coder
+        self.giou_loss = GIoULoss(loss_weight=2.0)
 
     def match_targets_to_proposals(self, proposal, target):
         match_quality_matrix = boxlist_iou(target, proposal)
@@ -145,11 +147,9 @@ class FastRCNNLossComputation(object):
         labels_pos = labels[sampled_pos_inds_subset]
         map_inds = 4 * labels_pos[:, None] + torch.tensor([0, 1, 2, 3], device=device)
 
-        box_loss = smooth_l1_loss(
+        box_loss = self.giou_loss(
             box_regression[sampled_pos_inds_subset[:, None], map_inds],
-            regression_targets[sampled_pos_inds_subset],
-            size_average=False,
-            beta=1,
+            regression_targets[sampled_pos_inds_subset]
         )
         box_loss = box_loss / labels.numel()
 
