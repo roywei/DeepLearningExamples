@@ -14,7 +14,7 @@ from maskrcnn_benchmark.layers import smooth_l1_loss
 from maskrcnn_benchmark.modeling.matcher import Matcher
 from maskrcnn_benchmark.structures.boxlist_ops import boxlist_iou
 from maskrcnn_benchmark.structures.boxlist_ops import cat_boxlist
-
+from maskrcnn_benchmark.layers import GIoULoss
 
 class RPNLossComputation(object):
     """
@@ -32,6 +32,7 @@ class RPNLossComputation(object):
         self.proposal_matcher = proposal_matcher
         self.fg_bg_sampler = fg_bg_sampler
         self.box_coder = box_coder
+        self.giou_loss = GIoULoss(loss_weight=10)
 
     def match_targets_to_anchors(self, anchor, target):
         match_quality_matrix = boxlist_iou(target, anchor)
@@ -122,12 +123,13 @@ class RPNLossComputation(object):
         labels = torch.cat(labels, dim=0)
         regression_targets = torch.cat(regression_targets, dim=0)
 
-        box_loss = smooth_l1_loss(
-            box_regression[sampled_pos_inds],
-            regression_targets[sampled_pos_inds],
-            beta=1.0 / 9,
-            size_average=False,
-        ) / (sampled_inds.numel())
+        import pdb
+        pdb.set_trace()
+
+        box_loss = self.giou_loss(box_regression[sampled_pos_inds],
+            regression_targets[sampled_pos_inds])
+
+        box_loss = box_loss/ (sampled_inds.numel())
 
         objectness_loss = F.binary_cross_entropy_with_logits(
             objectness[sampled_inds], labels[sampled_inds]
