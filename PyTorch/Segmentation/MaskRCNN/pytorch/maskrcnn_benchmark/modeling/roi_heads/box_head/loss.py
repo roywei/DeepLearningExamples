@@ -29,7 +29,7 @@ class FastRCNNLossComputation(object):
         self.proposal_matcher = proposal_matcher
         self.fg_bg_sampler = fg_bg_sampler
         self.box_coder = box_coder
-        self.giou_loss = GIoULoss(loss_weight=10.0)
+        self.giou_loss = GIoULoss(eps=1e-4, loss_weight=10.0)
 
     def match_targets_to_proposals(self, proposal, target):
         match_quality_matrix = boxlist_iou(target, proposal)
