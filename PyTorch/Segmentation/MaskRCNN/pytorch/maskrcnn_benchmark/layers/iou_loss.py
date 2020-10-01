@@ -97,10 +97,10 @@ def bbox_transform(deltas, weights):
     return x1.view(-1), y1.view(-1), x2.view(-1), y2.view(-1)
 
 @weighted_loss
-def compute_iou(output, target):
+def compute_iou(output, target, eps=1e-4):
     output = output.float()
     target = target.float()
-    transform_weights = (10., 10., 5., 5.)
+    transform_weights = (1., 1., 1., 1.)
 
     x1, y1, x2, y2 = bbox_transform(output, transform_weights)
     x1g, y1g, x2g, y2g = bbox_transform(target, transform_weights)
@@ -121,10 +121,10 @@ def compute_iou(output, target):
     intsctk = torch.zeros(x1.size()).to(output)
     mask = (ykis2 > ykis1) * (xkis2 > xkis1)
     intsctk[mask] = (xkis2[mask] - xkis1[mask]) * (ykis2[mask] - ykis1[mask])
-    unionk = (x2 - x1) * (y2 - y1) + (x2g - x1g) * (y2g - y1g) - intsctk + 1e-7
+    unionk = (x2 - x1) * (y2 - y1) + (x2g - x1g) * (y2g - y1g) - intsctk + eps
     iouk = intsctk / unionk
 
-    area_c = (xc2 - xc1) * (yc2 - yc1) + 1e-7
+    area_c = (xc2 - xc1) * (yc2 - yc1) + eps
     miouk = iouk - ((area_c - unionk) / area_c)
     miouk = 1 - miouk
 
