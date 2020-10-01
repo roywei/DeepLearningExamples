@@ -109,6 +109,7 @@ def train(cfg, local_rank, distributed, fp16, dllogger, args):
     if use_amp:
         # Initialize mixed-precision training
         if fp16:
+
             use_mixed_precision = True
         else:
             use_mixed_precision = cfg.DTYPE == "float16"
