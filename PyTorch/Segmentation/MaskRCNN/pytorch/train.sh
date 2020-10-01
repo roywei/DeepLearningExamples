@@ -17,8 +17,8 @@ DOCKER_RESULTS='/results'
 LOGFILE='joblog.log'
 COMMAND="python -m torch.distributed.launch --nproc_per_node=$GPU tools/train_net.py \
         --config-file $CONFIG \
-        DATASETS.TRAIN "(\"coco_2014_train\", \"coco_2014_valminusminival\")" \
-        DATASETS.TEST "(\"coco_2014_minival\",)" \
+        DATASETS.TRAIN "(\"coco_2017_train\",)" \
+        DATASETS.TEST "(\"coco_2017_val\",)" \
         SOLVER.BASE_LR 0.04 \
         SOLVER.MAX_ITER 45000 \
         SOLVER.STEPS \"(30000, 40000)\" \

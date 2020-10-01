@@ -87,9 +87,11 @@ def giou_loss(pred, target, eps=1e-7):
     Return:
         Tensor: Loss tensor.
     """
-    import pdb
-    pdb.set_trace()
+
     # overlap
+    pred = pred.float()
+    target = pred.float()
+
     lt = torch.max(pred[:, :2], target[:, :2])
     rb = torch.min(pred[:, 2:], target[:, 2:])
     wh = (rb - lt).clamp(min=0)
@@ -349,8 +351,7 @@ class GIoULoss(nn.Module):
             # giou_loss of shape (n,)
             assert weight.shape == pred.shape
             weight = weight.mean(-1)
-        import pdb
-        pdb.set_trace()
+
         loss = self.loss_weight * giou_loss(
             pred,
             target,
