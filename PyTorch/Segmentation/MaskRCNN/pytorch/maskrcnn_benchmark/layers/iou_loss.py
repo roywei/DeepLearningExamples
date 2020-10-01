@@ -95,7 +95,8 @@ def giou_loss(pred, target, eps=1e-7):
 
     lt = torch.max(pred[:, :2], target[:, :2])
     rb = torch.min(pred[:, 2:], target[:, 2:])
-    wh = (rb - lt).clamp(min=np.log(1000. / 16.))
+    wh = (rb - lt)
+    wh = torch.clamp(wh, max=np.log(1000. / 16.))
     overlap = wh[:, 0] * wh[:, 1]
     # union
     ap = (pred[:, 2] - pred[:, 0]) * (pred[:, 3] - pred[:, 1])
@@ -107,7 +108,9 @@ def giou_loss(pred, target, eps=1e-7):
     # enclose area
     enclose_x1y1 = torch.min(pred[:, :2], target[:, :2])
     enclose_x2y2 = torch.max(pred[:, 2:], target[:, 2:])
-    enclose_wh = (enclose_x2y2 - enclose_x1y1).clamp(min=np.log(1000. / 16.))
+    enclose_wh = (enclose_x2y2 - enclose_x1y1)
+    enclose_wh = torch.clamp(enclose_wh, max=np.log(1000. / 16.))
+
     enclose_area = enclose_wh[:, 0] * enclose_wh[:, 1] + eps
 
     # GIoU
