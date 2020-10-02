@@ -79,7 +79,7 @@ class Inferencer(object):
         if log_path:
             # tensorboard log path : {log_path}/YYYYMMDD-HHMMMSS
             log_path = os.path.join(log_path, time.strftime('%Y%m%d-%H%M%S'))
-            self.tbwriter = SummaryWriter(log_dir=log_path, flush_secs=10)
+            self.tbwriter = SummaryWriter(log_dir=log_path, flush_secs=60)
 
         # checkpoint path
         if self.ckpt_path:

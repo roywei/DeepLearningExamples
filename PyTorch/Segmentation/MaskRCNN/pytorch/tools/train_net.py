@@ -337,7 +337,7 @@ def main():
     dllogger.log(step="PARAMETER", data={"config":cfg})
     
     if args.local_rank==0:	
-        args.writer = SummaryWriter(args.log_dir,flush_secs=30)
+        args.writer = SummaryWriter(args.log_dir,flush_secs=180)
 
     if args.fp16:
         fp16 = True
