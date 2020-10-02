@@ -86,6 +86,10 @@ def mlperf_test_early_exit(iteration, iters_per_epoch, tester, model, distribute
         model.train()
         dllogger.log(step=(iteration, epoch, ), data={"BBOX_mAP": bbox_map, "MASK_mAP": segm_map})
         if args.local_rank==0:
+            for name, param in model.named_parameters():
+                if param.requires_grad:
+                    args.writer.add_scalar(name + "_weight", param.data.mean())
+                    args.writer.add_scalar(name + "_grad", param.grad.mean())
             args.writer.add_scalar('BBOX_mAP', bbox_map, epoch)
             args.writer.add_scalar('MASK_mAP', segm_map, epoch)
         # terminating condition
