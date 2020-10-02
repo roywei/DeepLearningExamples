@@ -32,7 +32,9 @@ class RPNLossComputation(object):
         self.proposal_matcher = proposal_matcher
         self.fg_bg_sampler = fg_bg_sampler
         self.box_coder = box_coder
-        self.giou_loss = GIoULoss(eps=1e-4, reduction="sum", loss_weight=10.0)
+        # using loss weight 2 from detectron2
+        # https://github.com/facebookresearch/detectron2/blob/master/configs/COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_1x_giou.yaml
+        self.giou_loss = GIoULoss(eps=1e-4, reduction="sum", loss_weight=2.0)
 
     def match_targets_to_anchors(self, anchor, target):
         match_quality_matrix = boxlist_iou(target, anchor)
