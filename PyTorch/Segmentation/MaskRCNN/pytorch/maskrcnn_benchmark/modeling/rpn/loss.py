@@ -34,7 +34,7 @@ class RPNLossComputation(object):
         self.box_coder = box_coder
         # using loss weight 2 from detectron2
         # https://github.com/facebookresearch/detectron2/blob/master/configs/COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_1x_giou.yaml
-        self.giou_loss = GIoULoss(eps=1e-4, reduction="sum", loss_weight=2.0)
+        # self.giou_loss = GIoULoss(eps=1e-4, reduction="sum", loss_weight=2.0)
 
     def match_targets_to_anchors(self, anchor, target):
         match_quality_matrix = boxlist_iou(target, anchor)
@@ -125,9 +125,14 @@ class RPNLossComputation(object):
         labels = torch.cat(labels, dim=0)
         regression_targets = torch.cat(regression_targets, dim=0)
 
-
-        box_loss = self.giou_loss(box_regression[sampled_pos_inds],
-            regression_targets[sampled_pos_inds])
+        box_loss = smooth_l1_loss(
+            box_regression[sampled_pos_inds],
+            regression_targets[sampled_pos_inds],
+            beta=1.0 / 9,
+            size_average=False,
+            )
+        # box_loss = self.giou_loss(box_regression[sampled_pos_inds],
+        #     regression_targets[sampled_pos_inds])
 
         box_loss = box_loss/ (sampled_inds.numel())
 
