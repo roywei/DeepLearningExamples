@@ -148,7 +148,7 @@ def giou_loss(pred, target, eps=1e-7):
 
     # overlap
     pred = pred.float()
-    target = pred.float()
+    target = target.float()
 
     lt = torch.max(pred[:, :2], target[:, :2])
     rb = torch.min(pred[:, 2:], target[:, 2:])

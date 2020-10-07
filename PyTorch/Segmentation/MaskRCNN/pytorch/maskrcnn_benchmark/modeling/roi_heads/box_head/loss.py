@@ -147,9 +147,14 @@ class FastRCNNLossComputation(object):
         labels_pos = labels[sampled_pos_inds_subset]
         map_inds = 4 * labels_pos[:, None] + torch.tensor([0, 1, 2, 3], device=device)
 
+        bbox_pred = box_regression[sampled_pos_inds_subset[:, None], map_inds]
+        bbox_target = regression_targets[sampled_pos_inds_subset]
+        sampled_proposal = torch.cat([a.bbox for a in proposals], dim=0)[sampled_pos_inds_subset]
+        bbox_pred = self.box_coder.decode(bbox_pred, sampled_proposal)
+        bbox_target = self.box_coder.decode(bbox_target, sampled_proposal)
         box_loss = self.giou_loss(
-            box_regression[sampled_pos_inds_subset[:, None], map_inds],
-            regression_targets[sampled_pos_inds_subset]
+            bbox_pred,
+            bbox_target
         )
         box_loss = box_loss / labels.numel()
 
