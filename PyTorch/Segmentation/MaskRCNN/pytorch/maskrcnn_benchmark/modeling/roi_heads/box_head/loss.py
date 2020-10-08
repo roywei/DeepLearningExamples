@@ -29,7 +29,7 @@ class FastRCNNLossComputation(object):
         self.proposal_matcher = proposal_matcher
         self.fg_bg_sampler = fg_bg_sampler
         self.box_coder = box_coder
-        self.giou_loss = GIoULoss(eps=1e-6, reduction="sum", loss_weight=10.0)
+        self.giou_loss = GIoULoss(eps=1e-6, reduction="mean", loss_weight=10.0)
         self.decode = decode
 
     def match_targets_to_proposals(self, proposal, target):
@@ -66,6 +66,7 @@ class FastRCNNLossComputation(object):
             labels_per_image[ignore_inds] = -1  # -1 is ignored by sampler
 
             # compute regression targets
+            regression_targets_per_image = matched_targets.bbox
             if not self.decode:
                 regression_targets_per_image = self.box_coder.encode(
                     matched_targets.bbox, proposals_per_image.bbox
@@ -147,17 +148,17 @@ class FastRCNNLossComputation(object):
         # advanced indexing
         sampled_pos_inds_subset = torch.nonzero(labels > 0).squeeze(1)
         labels_pos = labels[sampled_pos_inds_subset]
-        map_inds = 4 * labels_pos[:, None] + torch.tensor([0, 1, 2, 3], device=device)
-        
+
         rois = torch.cat([a.bbox for a in proposals], dim=0)
         bbox_pred = self.box_coder.decode(box_regression, rois)
-        bbox_pred = bbox_pred[sampled_pos_inds_subset[:, None], map_inds]
+        bbox_pred = bbox_pred.view(bbox_pred.size(0), -1, 4)
+        bbox_pred = bbox_pred[labels_pos, labels_pos]
         bbox_target = regression_targets[sampled_pos_inds_subset]
         box_loss = self.giou_loss(
             bbox_pred,
-            bbox_target
+            bbox_target,
+            avg_factor= labels.numel()
         )
-        box_loss = box_loss / labels.numel()
 
         return classification_loss, box_loss
 
