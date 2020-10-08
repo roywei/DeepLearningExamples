@@ -19,7 +19,7 @@ class FastRCNNLossComputation(object):
     Also supports FPN
     """
 
-    def __init__(self, proposal_matcher, fg_bg_sampler, box_coder):
+    def __init__(self, proposal_matcher, fg_bg_sampler, box_coder, decode):
         """
         Arguments:
             proposal_matcher (Matcher)
@@ -30,6 +30,7 @@ class FastRCNNLossComputation(object):
         self.fg_bg_sampler = fg_bg_sampler
         self.box_coder = box_coder
         self.giou_loss = GIoULoss(eps=1e-6, reduction="sum", loss_weight=10.0)
+        self.decode = decode
 
     def match_targets_to_proposals(self, proposal, target):
         match_quality_matrix = boxlist_iou(target, proposal)
@@ -65,9 +66,10 @@ class FastRCNNLossComputation(object):
             labels_per_image[ignore_inds] = -1  # -1 is ignored by sampler
 
             # compute regression targets
-            regression_targets_per_image = self.box_coder.encode(
-                matched_targets.bbox, proposals_per_image.bbox
-            )
+            if not self.decode:
+                regression_targets_per_image = self.box_coder.encode(
+                    matched_targets.bbox, proposals_per_image.bbox
+                )
 
             labels.append(labels_per_image)
             regression_targets.append(regression_targets_per_image)
@@ -146,12 +148,11 @@ class FastRCNNLossComputation(object):
         sampled_pos_inds_subset = torch.nonzero(labels > 0).squeeze(1)
         labels_pos = labels[sampled_pos_inds_subset]
         map_inds = 4 * labels_pos[:, None] + torch.tensor([0, 1, 2, 3], device=device)
-
-        bbox_pred = box_regression[sampled_pos_inds_subset[:, None], map_inds]
+        
+        rois = torch.cat([a.bbox for a in proposals], dim=0)
+        bbox_pred = self.box_coder.decode(box_regression, rois)
+        bbox_pred = bbox_pred[sampled_pos_inds_subset[:, None], map_inds]
         bbox_target = regression_targets[sampled_pos_inds_subset]
-        sampled_proposal = torch.cat([a.bbox for a in proposals], dim=0)[sampled_pos_inds_subset]
-        bbox_pred = self.box_coder.decode(bbox_pred, sampled_proposal)
-        bbox_target = self.box_coder.decode(bbox_target, sampled_proposal)
         box_loss = self.giou_loss(
             bbox_pred,
             bbox_target
@@ -175,6 +176,6 @@ def make_roi_box_loss_evaluator(cfg):
         cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE, cfg.MODEL.ROI_HEADS.POSITIVE_FRACTION
     )
 
-    loss_evaluator = FastRCNNLossComputation(matcher, fg_bg_sampler, box_coder)
+    loss_evaluator = FastRCNNLossComputation(matcher, fg_bg_sampler, box_coder, cfg.MODEL.ROI_BOX_HEAD.DECODE)
 
     return loss_evaluator
