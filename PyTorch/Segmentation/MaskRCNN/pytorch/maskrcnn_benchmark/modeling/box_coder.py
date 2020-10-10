@@ -54,7 +54,7 @@ class BoxCoder(object):
             targets = torch.stack((targets_dx, targets_dy, targets_dw, targets_dh), dim=1)
         return targets
 
-    def decode(self, rel_codes, boxes):
+    def decode(self, rel_codes, boxes, max_shape=None):
         """
         From a set of original boxes and encoded relative box offsets,
         get the decoded boxes.
@@ -66,9 +66,8 @@ class BoxCoder(object):
 
         boxes = boxes.to(rel_codes.dtype)
 
-        TO_REMOVE = 1  # TODO remove
-        widths = boxes[:, 2] - boxes[:, 0] + TO_REMOVE
-        heights = boxes[:, 3] - boxes[:, 1] + TO_REMOVE
+        widths = boxes[:, 2] - boxes[:, 0]
+        heights = boxes[:, 3] - boxes[:, 1]
         ctr_x = boxes[:, 0] + 0.5 * widths
         ctr_y = boxes[:, 1] + 0.5 * heights
 
@@ -79,8 +78,8 @@ class BoxCoder(object):
         dh = rel_codes[:, 3::4] / wh
 
         # Prevent sending too large values into torch.exp()
-        dw = torch.clamp(dw, max=self.bbox_xform_clip)
-        dh = torch.clamp(dh, max=self.bbox_xform_clip)
+        dw = torch.clamp(dw, min=-self.bbox_xform_clip, max=self.bbox_xform_clip)
+        dh = torch.clamp(dh, min=-self.bbox_xform_clip, max=self.bbox_xform_clip)
 
         pred_ctr_x = dx * widths[:, None] + ctr_x[:, None]
         pred_ctr_y = dy * heights[:, None] + ctr_y[:, None]
@@ -93,8 +92,13 @@ class BoxCoder(object):
         # y1
         pred_boxes[:, 1::4] = pred_ctr_y - 0.5 * pred_h
         # x2 (note: "- 1" is correct; don't be fooled by the asymmetry)
-        pred_boxes[:, 2::4] = pred_ctr_x + 0.5 * pred_w - 1
+        pred_boxes[:, 2::4] = pred_ctr_x + 0.5 * pred_w
         # y2 (note: "- 1" is correct; don't be fooled by the asymmetry)
-        pred_boxes[:, 3::4] = pred_ctr_y + 0.5 * pred_h - 1
+        pred_boxes[:, 3::4] = pred_ctr_y + 0.5 * pred_h
+        if max_shape is not None:
+            pred_boxes[:, 0::4] = torch.clamp(pred_boxes[:, 0::4], min=0, max=max_shape[1])
+            pred_boxes[:, 1::4] = torch.clamp(pred_boxes[:, 1::4], min=0, max=max_shape[0])
+            pred_boxes[:, 2::4] = torch.clamp(pred_boxes[:, 2::4], min=0, max=max_shape[1])
+            pred_boxes[:, 3::4] = torch.clamp(pred_boxes[:, 3::4], min=0, max=max_shape[0])
 
         return pred_boxes

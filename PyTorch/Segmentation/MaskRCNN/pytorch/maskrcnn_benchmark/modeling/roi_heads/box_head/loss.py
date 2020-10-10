@@ -66,11 +66,12 @@ class FastRCNNLossComputation(object):
             labels_per_image[ignore_inds] = -1  # -1 is ignored by sampler
 
             # compute regression targets
-            regression_targets_per_image = matched_targets.bbox
             if not self.decode:
                 regression_targets_per_image = self.box_coder.encode(
                     matched_targets.bbox, proposals_per_image.bbox
                 )
+            else:
+                regression_targets_per_image = matched_targets.bbox
 
             labels.append(labels_per_image)
             regression_targets.append(regression_targets_per_image)
@@ -147,18 +148,23 @@ class FastRCNNLossComputation(object):
         # the corresponding ground truth labels, to be used with
         # advanced indexing
         sampled_pos_inds_subset = torch.nonzero(labels > 0).squeeze(1)
-        labels_pos = labels[sampled_pos_inds_subset]
+        if sampled_pos_inds_subset.any():
+            labels_pos = labels[sampled_pos_inds_subset]
 
-        rois = torch.cat([a.bbox for a in proposals], dim=0)
-        bbox_pred = self.box_coder.decode(box_regression, rois)
-        bbox_pred = bbox_pred.view(bbox_pred.size(0), -1, 4)
-        bbox_pred = bbox_pred[sampled_pos_inds_subset, labels_pos]
-        bbox_target = regression_targets[sampled_pos_inds_subset]
-        box_loss = self.giou_loss(
-            bbox_pred,
-            bbox_target,
-            avg_factor= labels.numel()
-        )
+            rois = torch.cat([a.bbox for a in proposals], dim=0)
+            bbox_pred = box_regression
+            if self.decode:
+                bbox_pred = self.box_coder.decode(box_regression, rois)
+                bbox_pred = bbox_pred.view(bbox_pred.size(0), -1, 4)
+            bbox_pred = bbox_pred[sampled_pos_inds_subset, labels_pos]
+            bbox_target = regression_targets[sampled_pos_inds_subset]
+            box_loss = self.giou_loss(
+                bbox_pred,
+                bbox_target,
+                avg_factor= labels.numel()
+            )
+        else:
+            box_loss = box_regression.sum() * 0
 
         return classification_loss, box_loss
 

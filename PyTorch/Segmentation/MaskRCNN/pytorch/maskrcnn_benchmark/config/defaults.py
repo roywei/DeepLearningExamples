@@ -45,9 +45,12 @@ _C.INPUT.MIN_SIZE_TEST = 800
 # Maximum size of the side of the image during testing
 _C.INPUT.MAX_SIZE_TEST = 1333
 # Values to be used for image normalization
-_C.INPUT.PIXEL_MEAN = [102.9801, 115.9465, 122.7717]
+_C.INPUT.PIXEL_MEAN = [123.675, 116.28, 103.5]
+_C.INPUT.PIXEL_STD = [58.395, 57.12, 57.375]
+# coco 2014
+# _C.INPUT.PIXEL_MEAN = [102.9801, 115.9465, 122.7717]
 # Values to be used for image normalization
-_C.INPUT.PIXEL_STD = [1., 1., 1.]
+# _C.INPUT.PIXEL_STD = [1., 1., 1.]
 # Convert image to BGR format (for Caffe2 models), in range 0-255
 _C.INPUT.TO_BGR255 = True
 
@@ -88,7 +91,7 @@ _C.MODEL.BACKBONE = CN()
 _C.MODEL.BACKBONE.CONV_BODY = "R-50-C4"
 
 # Add StopGrad at a specified stage so the bottom layers are frozen
-_C.MODEL.BACKBONE.FREEZE_CONV_BODY_AT = 2
+_C.MODEL.BACKBONE.FREEZE_CONV_BODY_AT = 1
 _C.MODEL.BACKBONE.OUT_CHANNELS = 256 * 4
 # GN for backbone
 _C.MODEL.BACKBONE.USE_GN = False
