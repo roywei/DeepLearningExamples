@@ -48,7 +48,7 @@ def make_conv3x3(
     stride=1, 
     use_gn=False,
     use_relu=False,
-    kaiming_init=False
+    kaiming_init=True
 ):
     conv = Conv2d(
         in_channels, 
@@ -87,7 +87,7 @@ def make_fc(dim_in, hidden_dim, use_gn=False):
         nn.init.kaiming_uniform_(fc.weight, a=1)
         return nn.Sequential(fc, group_norm(hidden_dim))
     fc = nn.Linear(dim_in, hidden_dim)
-    nn.init.xavier_uniform_(fc.weight)
+    nn.init.kaiming_uniform_(fc.weight, a=1)
     nn.init.constant_(fc.bias, 0)
     return fc
 
