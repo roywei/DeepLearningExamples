@@ -148,7 +148,7 @@ class FastRCNNLossComputation(object):
         # the corresponding ground truth labels, to be used with
         # advanced indexing
         sampled_pos_inds_subset = torch.nonzero(labels > 0).squeeze(1)
-        if sampled_pos_inds_subset.any():
+        if sampled_pos_inds_subset.size()[0] > 0:
             labels_pos = labels[sampled_pos_inds_subset]
 
             rois = torch.cat([a.bbox for a in proposals], dim=0)
