@@ -50,7 +50,7 @@ class Checkpointer(object):
         self.tag_last_checkpoint(save_file)
 
     def load(self, f=None):
-        if False: #self.has_checkpoint(): #skip this to avoid bugs
+        if False:#self.has_checkpoint():#skip this to avoid bugs
             # override argument with existing checkpoint
             f = self.get_checkpoint_file()
         if not f:
@@ -134,6 +134,8 @@ class DetectronCheckpointer(Checkpointer):
             return load_c2_format(self.cfg, f)
         # load native detectron.pytorch checkpoint
         loaded = super(DetectronCheckpointer, self)._load_file(f)
+        if 'state_dict' in loaded:
+            loaded=loaded['state_dict']
         if "model" not in loaded:
             loaded = dict(model=loaded)
         return loaded
