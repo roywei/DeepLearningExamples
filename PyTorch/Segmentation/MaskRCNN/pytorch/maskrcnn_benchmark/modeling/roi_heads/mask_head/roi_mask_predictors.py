@@ -2,8 +2,8 @@
 from torch import nn
 from torch.nn import functional as F
 
-from maskrcnn_benchmark.layers import Conv2d
-from maskrcnn_benchmark.layers import ConvTranspose2d
+from maskrcnn_benchmark.layers import Conv2d,NormalizedDeconv
+from maskrcnn_benchmark.layers import ConvTranspose2d,NormalizedDeconvTransposed
 
 
 class MaskRCNNC4Predictor(nn.Module):
@@ -19,9 +19,13 @@ class MaskRCNNC4Predictor(nn.Module):
             stage2_relative_factor = 2 ** (stage_index - 1)
             res2_out_channels = cfg.MODEL.RESNETS.RES2_OUT_CHANNELS
             num_inputs = res2_out_channels * stage2_relative_factor
-
-        self.conv5_mask = ConvTranspose2d(num_inputs, dim_reduced, 2, 2, 0)
-        self.mask_fcn_logits = Conv2d(dim_reduced, num_classes, 1, 1, 0)
+        if cfg.MODEL.ROI_MASK_HEAD.USE_DECONV:
+            block=cfg.MODEL.DECONV.BLOCK
+            self.conv5_mask = NormalizedDeconvTransposed(num_inputs, dim_reduced, 2, 2, 0, block=block,sync=cfg.MODEL.DECONV.SYNC)
+            self.mask_fcn_logits = NormalizedDeconv(dim_reduced, num_classes, 1, 1, 0, block=block,sync=cfg.MODEL.DECONV.SYNC)
+        else:
+            self.conv5_mask = ConvTranspose2d(num_inputs, dim_reduced, 2, 2, 0)
+            self.mask_fcn_logits = Conv2d(dim_reduced, num_classes, 1, 1, 0)
 
         for name, param in self.named_parameters():
             if "bias" in name:

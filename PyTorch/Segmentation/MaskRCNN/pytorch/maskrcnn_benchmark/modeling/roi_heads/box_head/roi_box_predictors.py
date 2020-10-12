@@ -1,6 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 from torch import nn
-
+from maskrcnn_benchmark.layers import NormalizedDelinear
 
 class FastRCNNPredictor(nn.Module):
     def __init__(self, config, pretrained=None):
@@ -35,9 +35,13 @@ class FPNPredictor(nn.Module):
         super(FPNPredictor, self).__init__()
         num_classes = cfg.MODEL.ROI_BOX_HEAD.NUM_CLASSES
         representation_size = cfg.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM
-
-        self.cls_score = nn.Linear(representation_size, num_classes)
-        self.bbox_pred = nn.Linear(representation_size, num_classes * 4)
+        if cfg.MODEL.FPN.USE_DECONV:
+            block=cfg.MODEL.DECONV.BLOCK_FC
+            self.cls_score = NormalizedDelinear(representation_size, num_classes,block=block,sync=cfg.MODEL.DECONV.SYNC)
+            self.bbox_pred = NormalizedDelinear(representation_size, num_classes * 4,block=block,sync=cfg.MODEL.DECONV.SYNC)
+        else:
+            self.cls_score = nn.Linear(representation_size, num_classes)
+            self.bbox_pred = nn.Linear(representation_size, num_classes * 4)
 
         nn.init.normal_(self.cls_score.weight, std=0.01)
         nn.init.normal_(self.bbox_pred.weight, std=0.001)

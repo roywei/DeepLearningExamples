@@ -11,8 +11,10 @@ from .roi_align import roi_align
 from .roi_pool import ROIPool
 from .roi_pool import roi_pool
 from .smooth_l1_loss import smooth_l1_loss
+from .deconv import *
+from .group_whitening import GroupItN
 
 __all__ = ["nms", "roi_align", "ROIAlign", "roi_pool", "ROIPool", 
            "smooth_l1_loss", "Conv2d", "ConvTranspose2d", "interpolate", 
-           "FrozenBatchNorm2d",
+           "FrozenBatchNorm2d","FastDeconv","convert_sync_nd","convert_sync_nd_ddp",'GroupItN',"NormalizedDeconv","NormalizedDeconvTransposed","NormalizedDelinear"
            ]

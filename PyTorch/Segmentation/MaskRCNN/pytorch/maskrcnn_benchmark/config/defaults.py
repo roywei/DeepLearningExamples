@@ -66,7 +66,7 @@ _C.DATASETS.TEST = ()
 # -----------------------------------------------------------------------------
 _C.DATALOADER = CN()
 # Number of data loading threads
-_C.DATALOADER.NUM_WORKERS = 4
+_C.DATALOADER.NUM_WORKERS = 8
 # If > 0, this enforces that each collated batch should have a size divisible
 # by SIZE_DIVISIBILITY
 _C.DATALOADER.SIZE_DIVISIBILITY = 0
@@ -92,6 +92,8 @@ _C.MODEL.BACKBONE.FREEZE_CONV_BODY_AT = 2
 _C.MODEL.BACKBONE.OUT_CHANNELS = 256 * 4
 # GN for backbone
 _C.MODEL.BACKBONE.USE_GN = False
+_C.MODEL.BACKBONE.USE_GW = False
+_C.MODEL.BACKBONE.USE_DECONV = False
 
 
 # ---------------------------------------------------------------------------- #
@@ -99,8 +101,11 @@ _C.MODEL.BACKBONE.USE_GN = False
 # ---------------------------------------------------------------------------- #
 _C.MODEL.FPN = CN()
 _C.MODEL.FPN.USE_GN = False
-_C.MODEL.FPN.USE_RELU = False
+_C.MODEL.FPN.USE_GW = False
 
+_C.MODEL.FPN.USE_DECONV = False
+
+_C.MODEL.FPN.USE_RELU = False
 
 # ---------------------------------------------------------------------------- #
 # Group Norm options
@@ -112,6 +117,19 @@ _C.MODEL.GROUP_NORM.DIM_PER_GP = -1
 _C.MODEL.GROUP_NORM.NUM_GROUPS = 32
 # GroupNorm's small constant in the denominator
 _C.MODEL.GROUP_NORM.EPSILON = 1e-5
+
+# ---------------------------------------------------------------------------- #
+# Whitening Norm options
+# ---------------------------------------------------------------------------- #
+_C.MODEL.WHITENING = CN()
+# Number of dimensions per group in Whitening (-1 if using NUM_GROUPS)
+_C.MODEL.WHITENING.DIM_PER_GP = 16
+# Number of groups in Group based Whitening (-1 if using DIM_PER_GP)
+_C.MODEL.WHITENING.NUM_GROUPS = 32
+# Whitening's small constant in the denominator
+_C.MODEL.WHITENING.EPSILON = 1e-5
+# Iteration Number of Newton's methods
+_C.MODEL.WHITENING.T = 5
 
 
 # ---------------------------------------------------------------------------- #
@@ -160,6 +178,7 @@ _C.MODEL.RPN.FPN_POST_NMS_TOP_N_TEST = 2000
 # Custom rpn head, empty to use default conv or separable conv
 _C.MODEL.RPN.RPN_HEAD = "SingleConvRPNHead"
 
+_C.MODEL.RPN.USE_DECONV = False
 
 # ---------------------------------------------------------------------------- #
 # ROI HEADS options
@@ -207,6 +226,10 @@ _C.MODEL.ROI_BOX_HEAD.NUM_CLASSES = 81
 _C.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM = 1024
 # GN
 _C.MODEL.ROI_BOX_HEAD.USE_GN = False
+_C.MODEL.ROI_BOX_HEAD.USE_GW = False
+
+_C.MODEL.ROI_BOX_HEAD.USE_DECONV = False
+
 # Dilation
 _C.MODEL.ROI_BOX_HEAD.DILATION = 1
 _C.MODEL.ROI_BOX_HEAD.CONV_HEAD_DIM = 256
@@ -230,6 +253,8 @@ _C.MODEL.ROI_MASK_HEAD.POSTPROCESS_MASKS_THRESHOLD = 0.5
 _C.MODEL.ROI_MASK_HEAD.DILATION = 1
 # GN
 _C.MODEL.ROI_MASK_HEAD.USE_GN = False
+_C.MODEL.ROI_MASK_HEAD.USE_GW = False
+_C.MODEL.ROI_MASK_HEAD.USE_DECONV = False
 
 # ---------------------------------------------------------------------------- #
 # ResNe[X]t options (ResNets = {ResNet, ResNeXt}
@@ -327,3 +352,18 @@ _C.MIN_BBOX_MAP = 0.377
 _C.MIN_MASK_MAP = 0.342
 
 _C.SAVE_CHECKPOINT = True
+
+
+
+# ---------------------------------------------------------------------------- #
+# Deconv options
+# ---------------------------------------------------------------------------- #
+_C.MODEL.DECONV=CN()
+_C.MODEL.DECONV.BLOCK = 64
+_C.MODEL.DECONV.BLOCK_FC = 256
+_C.MODEL.DECONV.STRIDE = 3
+_C.MODEL.DECONV.ITER = 5
+_C.MODEL.DECONV.SYNC = True
+_C.MODEL.DECONV.NORM_TYPE = 'layernorm'
+
+_C.DEBUG=False

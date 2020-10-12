@@ -9,7 +9,7 @@ from maskrcnn_benchmark.modeling.box_coder import BoxCoder
 from .loss import make_rpn_loss_evaluator
 from .anchor_generator import make_anchor_generator
 from .inference import make_rpn_postprocessor
-
+from maskrcnn_benchmark.layers import NormalizedDeconv 
 
 @registry.RPN_HEADS.register("SingleConvRPNHead")
 class RPNHead(nn.Module):
@@ -25,13 +25,18 @@ class RPNHead(nn.Module):
             num_anchors (int): number of anchors to be predicted
         """
         super(RPNHead, self).__init__()
-        self.conv = nn.Conv2d(
-            in_channels, in_channels, kernel_size=3, stride=1, padding=1
-        )
-        self.cls_logits = nn.Conv2d(in_channels, num_anchors, kernel_size=1, stride=1)
-        self.bbox_pred = nn.Conv2d(
-            in_channels, num_anchors * 4, kernel_size=1, stride=1
-        )
+        if (cfg.MODEL.RPN.USE_DECONV):
+            self.conv = NormalizedDeconv(in_channels, in_channels, kernel_size=3, stride=1, padding=1, block=cfg.MODEL.DECONV.BLOCK,sync=cfg.MODEL.DECONV.SYNC)
+            self.cls_logits = NormalizedDeconv(in_channels, num_anchors, kernel_size=1, stride=1, block=cfg.MODEL.DECONV.BLOCK,sync=cfg.MODEL.DECONV.SYNC)
+            self.bbox_pred = NormalizedDeconv(in_channels, num_anchors * 4, kernel_size=1, stride=1, block=cfg.MODEL.DECONV.BLOCK,sync=cfg.MODEL.DECONV.SYNC)
+        else:
+            self.conv = nn.Conv2d(
+                in_channels, in_channels, kernel_size=3, stride=1, padding=1
+            )
+            self.cls_logits = nn.Conv2d(in_channels, num_anchors, kernel_size=1, stride=1)
+            self.bbox_pred = nn.Conv2d(
+                in_channels, num_anchors * 4, kernel_size=1, stride=1
+            )
 
         for l in [self.conv, self.cls_logits, self.bbox_pred]:
             torch.nn.init.normal_(l.weight, std=0.01)

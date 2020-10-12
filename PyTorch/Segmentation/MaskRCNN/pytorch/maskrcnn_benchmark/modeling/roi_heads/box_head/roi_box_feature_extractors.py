@@ -65,9 +65,18 @@ class FPN2MLPFeatureExtractor(nn.Module):
         input_size = cfg.MODEL.BACKBONE.OUT_CHANNELS * resolution ** 2
         representation_size = cfg.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM
         use_gn = cfg.MODEL.ROI_BOX_HEAD.USE_GN
+        use_gw = cfg.MODEL.ROI_BOX_HEAD.USE_GW
+
+        block=0
+        use_delinear=cfg.MODEL.ROI_BOX_HEAD.USE_DECONV
+        if use_delinear:
+            use_gn=False
+            use_gw=False
+            block=cfg.MODEL.DECONV.BLOCK_FC#check here
+        
         self.pooler = pooler
-        self.fc6 = make_fc(input_size, representation_size, use_gn)
-        self.fc7 = make_fc(representation_size, representation_size, use_gn)
+        self.fc6 = make_fc(input_size, representation_size, use_gn,use_gw,use_delinear,block=block,sync=cfg.MODEL.DECONV.SYNC)
+        self.fc7 = make_fc(representation_size, representation_size, use_gn,use_gw,use_delinear,block=block,sync=cfg.MODEL.DECONV.SYNC)
 
     def forward(self, x, proposals):
         x = self.pooler(x, proposals)
@@ -99,6 +108,8 @@ class FPNXconv1fcFeatureExtractor(nn.Module):
         self.pooler = pooler
         
         use_gn = cfg.MODEL.ROI_BOX_HEAD.USE_GN
+        use_gw = cfg.MODEL.ROI_BOX_HEAD.USE_GW
+
         in_channels = cfg.MODEL.BACKBONE.OUT_CHANNELS
         conv_head_dim = cfg.MODEL.ROI_BOX_HEAD.CONV_HEAD_DIM
         num_stacked_convs = cfg.MODEL.ROI_BOX_HEAD.NUM_STACKED_CONVS
@@ -114,11 +125,11 @@ class FPNXconv1fcFeatureExtractor(nn.Module):
                     stride=1,
                     padding=dilation,
                     dilation=dilation,
-                    bias=False if use_gn else True
+                    bias=False if (use_gn or use_gw) else True
                 )
             )
             in_channels = conv_head_dim
-            if use_gn:
+            if use_gn or use_gw:
                 xconvs.append(group_norm(in_channels))
             xconvs.append(nn.ReLU(inplace=True))
 
@@ -127,12 +138,12 @@ class FPNXconv1fcFeatureExtractor(nn.Module):
             for l in modules.modules():
                 if isinstance(l, nn.Conv2d):
                     torch.nn.init.normal_(l.weight, std=0.01)
-                    if not use_gn:
+                    if not (use_gn or use_gw):
                         torch.nn.init.constant_(l.bias, 0)
 
         input_size = conv_head_dim * resolution ** 2
         representation_size = cfg.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM
-        self.fc6 = make_fc(input_size, representation_size, use_gn=False)
+        self.fc6 = make_fc(input_size, representation_size, use_gn=False,use_gw=False)
 
     def forward(self, x, proposals):
         x = self.pooler(x, proposals)

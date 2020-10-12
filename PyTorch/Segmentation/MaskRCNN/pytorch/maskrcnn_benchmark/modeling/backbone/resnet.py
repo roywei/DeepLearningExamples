@@ -23,9 +23,10 @@ import torch.nn.functional as F
 from torch import nn
 
 from maskrcnn_benchmark.layers import FrozenBatchNorm2d
-from maskrcnn_benchmark.layers import Conv2d
-from maskrcnn_benchmark.modeling.make_layers import group_norm
+from maskrcnn_benchmark.layers import Conv2d,NormalizedDeconv
+from maskrcnn_benchmark.modeling.make_layers import group_norm, Whitening_IGWItN
 from maskrcnn_benchmark.utils.registry import Registry
+import functools
 
 
 # ResNet stage specification
@@ -85,7 +86,10 @@ class ResNet(nn.Module):
         stem_module = _STEM_MODULES[cfg.MODEL.RESNETS.STEM_FUNC]
         stage_specs = _STAGE_SPECS[cfg.MODEL.BACKBONE.CONV_BODY]
         transformation_module = _TRANSFORMATION_MODULES[cfg.MODEL.RESNETS.TRANS_FUNC]
-
+        if 'Deconv' in cfg.MODEL.RESNETS.TRANS_FUNC:
+            transformation_module=functools.partial(
+                    _TRANSFORMATION_MODULES[cfg.MODEL.RESNETS.TRANS_FUNC],
+                    block=cfg.MODEL.DECONV.BLOCK,sync=cfg.MODEL.DECONV.SYNC)
         # Construct the stem module
         self.stem = stem_module(cfg)
 
@@ -117,6 +121,8 @@ class ResNet(nn.Module):
             self.stages.append(name)
             self.return_features[name] = stage_spec.return_features
 
+
+                    
         # Optionally freeze (requires_grad=False) parts of the backbone
         self._freeze_backbone(cfg.MODEL.BACKBONE.FREEZE_CONV_BODY_AT)
 
@@ -293,19 +299,116 @@ class Bottleneck(nn.Module):
         out = self.conv1(x)
         out = self.bn1(out)
         out = F.relu_(out)
-
         out = self.conv2(out)
         out = self.bn2(out)
         out = F.relu_(out)
 
         out0 = self.conv3(out)
         out = self.bn3(out0)
-
+        
         if self.downsample is not None:
             identity = self.downsample(x)
 
         out += identity
+        #print('identity:',identity.std(),'out',out.std())
+
         out = F.relu_(out)
+        
+        #print('o:',out.std())
+        
+        return out
+
+
+class BottleneckWithDeconv(nn.Module):
+    def __init__(
+        self,
+        in_channels,
+        bottleneck_channels,
+        out_channels,
+        num_groups,
+        stride_in_1x1,
+        stride,
+        dilation,
+        block,
+        sync
+    ):
+        super(BottleneckWithDeconv, self).__init__()
+
+        self.downsample = None
+        if in_channels != out_channels:
+            down_stride = stride if dilation == 1 else 1
+            self.downsample = nn.Sequential(
+                NormalizedDeconv(
+                    in_channels, out_channels, 
+                    kernel_size=1, stride=down_stride, bias=True,block=block,sync=sync
+                ),
+            )
+            for modules in [self.downsample,]:
+                for l in modules.modules():
+                    if isinstance(l, NormalizedDeconv):
+                        nn.init.kaiming_uniform_(l.weight, a=1)
+
+        if dilation > 1:
+            stride = 1 # reset to be 1
+
+        # The original MSRA ResNet models have stride in the first 1x1 conv
+        # The subsequent fb.torch.resnet and Caffe2 ResNe[X]t implementations have
+        # stride in the 3x3 conv
+        stride_1x1, stride_3x3 = (stride, 1) if stride_in_1x1 else (1, stride)
+
+        self.conv1 = NormalizedDeconv(
+            in_channels,
+            bottleneck_channels,
+            kernel_size=1,
+            stride=stride_1x1,
+            bias=True,
+            block=block,
+            sync=sync
+            
+        )
+
+        # TODO: specify init for the above
+
+        self.conv2 = NormalizedDeconv(
+            bottleneck_channels,
+            bottleneck_channels,
+            kernel_size=3,
+            stride=stride_3x3,
+            padding=dilation,
+            bias=True,
+            groups=num_groups,
+            dilation=dilation,
+            block=block,
+            sync=sync
+        )
+
+        self.conv3 = NormalizedDeconv(
+            bottleneck_channels, out_channels, kernel_size=1, bias=True,block=block,sync=sync
+        )
+
+        for l in [self.conv1, self.conv2, self.conv3,]:
+            nn.init.kaiming_uniform_(l.weight, a=1)
+
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        out = F.relu_(out)
+
+        out = self.conv2(out)
+        out = F.relu_(out)
+
+        out = self.conv3(out)
+        
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out = out + identity
+        #print('identity:',identity.std(),'out',out.std())
+
+        out = F.relu_(out)
+        
+        #print('o:',out.std())
 
         return out
 
@@ -332,6 +435,42 @@ class BaseStem(nn.Module):
         return x
 
 
+class StemWithDeconv(nn.Module):
+    def __init__(self, cfg, norm_func=None):
+        super(StemWithDeconv, self).__init__()
+        out_channels = cfg.MODEL.RESNETS.STEM_OUT_CHANNELS
+        block=cfg.MODEL.DECONV.BLOCK
+        self.conv1 = NormalizedDeconv(
+            3, out_channels, kernel_size=7, stride=2, padding=3, bias=True,block=block,sync=cfg.MODEL.DECONV.SYNC
+        )            
+        for l in [self.conv1,]:
+            nn.init.kaiming_uniform_(l.weight, a=1)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = F.relu_(x)
+        x = F.max_pool2d(x, kernel_size=3, stride=2, padding=1)
+        return x
+
+
+
+class StemWithFixedBatchNorm(BaseStem):
+    def __init__(self, cfg):
+        super(StemWithFixedBatchNorm, self).__init__(
+            cfg, norm_func=FrozenBatchNorm2d
+        )
+
+class StemWithGN(BaseStem):
+    def __init__(self, cfg):
+        super(StemWithGN, self).__init__(cfg, norm_func=group_norm)
+
+
+class StemWithGW(BaseStem):
+    def __init__(self, cfg):
+        super(StemWithGW, self).__init__(cfg, norm_func=Whitening_IGWItN)
+
+
+
 class BottleneckWithFixedBatchNorm(Bottleneck):
     def __init__(
         self,
@@ -353,14 +492,6 @@ class BottleneckWithFixedBatchNorm(Bottleneck):
             dilation=dilation,
             norm_func=FrozenBatchNorm2d
         )
-
-
-class StemWithFixedBatchNorm(BaseStem):
-    def __init__(self, cfg):
-        super(StemWithFixedBatchNorm, self).__init__(
-            cfg, norm_func=FrozenBatchNorm2d
-        )
-
 
 class BottleneckWithGN(Bottleneck):
     def __init__(
@@ -384,20 +515,44 @@ class BottleneckWithGN(Bottleneck):
             norm_func=group_norm
         )
 
+class BottleneckWithGW(Bottleneck):
+    def __init__(
+        self,
+        in_channels,
+        bottleneck_channels,
+        out_channels,
+        num_groups=1,
+        stride_in_1x1=True,
+        stride=1,
+        dilation=1
+    ):
+        super(BottleneckWithGW, self).__init__(
+            in_channels=in_channels,
+            bottleneck_channels=bottleneck_channels,
+            out_channels=out_channels,
+            num_groups=num_groups,
+            stride_in_1x1=stride_in_1x1,
+            stride=stride,
+            dilation=dilation,
+            norm_func=Whitening_IGWItN
+        )
 
-class StemWithGN(BaseStem):
-    def __init__(self, cfg):
-        super(StemWithGN, self).__init__(cfg, norm_func=group_norm)
+
 
 
 _TRANSFORMATION_MODULES = Registry({
     "BottleneckWithFixedBatchNorm": BottleneckWithFixedBatchNorm,
     "BottleneckWithGN": BottleneckWithGN,
+    "BottleneckWithGW": BottleneckWithGW,
+    "BottleneckWithDeconv": BottleneckWithDeconv,
+
 })
 
 _STEM_MODULES = Registry({
     "StemWithFixedBatchNorm": StemWithFixedBatchNorm,
     "StemWithGN": StemWithGN,
+    "StemWithGW": StemWithGW,
+    "StemWithDeconv": StemWithDeconv,
 })
 
 _STAGE_SPECS = Registry({

@@ -35,16 +35,23 @@ class MaskRCNNFPNFeatureExtractor(nn.Module):
         self.pooler = pooler
 
         use_gn = cfg.MODEL.ROI_MASK_HEAD.USE_GN
+        use_gw = cfg.MODEL.ROI_MASK_HEAD.USE_GW
+
         layers = cfg.MODEL.ROI_MASK_HEAD.CONV_LAYERS
         dilation = cfg.MODEL.ROI_MASK_HEAD.DILATION
+        use_deconv=cfg.MODEL.ROI_MASK_HEAD.USE_DECONV
+        block=cfg.MODEL.DECONV.BLOCK
 
+        if use_deconv:
+            use_gn=False
+            use_gw=False
+        
         next_feature = input_size
         self.blocks = []
         for layer_idx, layer_features in enumerate(layers, 1):
             layer_name = "mask_fcn{}".format(layer_idx)
             module = make_conv3x3(next_feature, layer_features, 
-                dilation=dilation, stride=1, use_gn=use_gn
-            )
+                dilation=dilation, stride=1, use_gn=use_gn,use_gw=use_gw,use_deconv=use_deconv,block=block,sync=cfg.MODEL.DECONV.SYNC)
             self.add_module(layer_name, module)
             next_feature = layer_features
             self.blocks.append(layer_name)

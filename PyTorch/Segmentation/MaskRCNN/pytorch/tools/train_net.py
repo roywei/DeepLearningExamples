@@ -82,12 +82,14 @@ def mlperf_test_early_exit(iteration, iters_per_epoch, tester, model, distribute
 
         bbox_map, segm_map = test_and_exchange_map(tester, model, distributed, args)
 
-        # necessary for correctness
+        # necessary for correctness, this is for resuming the training
         model.train()
         dllogger.log(step=(iteration, epoch, ), data={"BBOX_mAP": bbox_map, "MASK_mAP": segm_map})
+
         if args.local_rank==0:
             args.writer.add_scalar('BBOX_mAP', bbox_map, epoch)
             args.writer.add_scalar('MASK_mAP', segm_map, epoch)
+
         # terminating condition
         if bbox_map >= min_bbox_map and segm_map >= min_segm_map:
             dllogger.log(step="PARAMETER", data={"target_accuracy_reached": True})
@@ -96,10 +98,8 @@ def mlperf_test_early_exit(iteration, iters_per_epoch, tester, model, distribute
     return False
 
 
-def train(cfg, local_rank, distributed, fp16, dllogger, args):
+def train(cfg, local_rank, distributed, fp16, dllogger,args):
     model = build_detection_model(cfg)
-    print(model)
-
     device = torch.device(cfg.MODEL.DEVICE)
     model.to(device)
 
@@ -126,6 +126,9 @@ def train(cfg, local_rank, distributed, fp16, dllogger, args):
                 broadcast_buffers=False,
             )
 
+    
+    print(model)
+
     arguments = {}
     arguments["iteration"] = 0
 
@@ -144,7 +147,6 @@ def train(cfg, local_rank, distributed, fp16, dllogger, args):
         is_distributed=distributed,
         start_iter=arguments["iteration"],
     )
-
     checkpoint_period = cfg.SOLVER.CHECKPOINT_PERIOD
 
     # set the callback function to evaluate and potentially
@@ -176,7 +178,7 @@ def train(cfg, local_rank, distributed, fp16, dllogger, args):
         dllogger,
         args,
         per_iter_end_callback_fn=per_iter_callback_fn,
-    )
+        )
 
     return model, iters_per_epoch
 
@@ -208,7 +210,7 @@ def test_model(cfg, model, distributed, iters_per_epoch, dllogger,args):
             expected_results_sigma_tol=cfg.TEST.EXPECTED_RESULTS_SIGMA_TOL,
             output_folder=output_folder,
             dllogger=dllogger,
-            args=args	
+            args=args
         )
         synchronize()
         results.append(result)
@@ -219,6 +221,7 @@ def test_model(cfg, model, distributed, iters_per_epoch, dllogger,args):
         dllogger.log(step=(cfg.SOLVER.MAX_ITER, cfg.SOLVER.MAX_ITER / iters_per_epoch,), data={"BBOX_mAP": bbox_map, "MASK_mAP": segm_map})
         dllogger.log(step=tuple(), data={"BBOX_mAP": bbox_map, "MASK_mAP": segm_map})
         if args.local_rank==0:
+
             args.writer.add_scalar('BBOX_mAP', bbox_map, cfg.SOLVER.MAX_ITER / iters_per_epoch)
             args.writer.add_scalar('MASK_mAP', segm_map, cfg.SOLVER.MAX_ITER / iters_per_epoch)
 
@@ -229,10 +232,23 @@ def save_path_formatter(args,cfg):
     args.batch_size=cfg.SOLVER.IMS_PER_BATCH
     args.max_iter=cfg.SOLVER.MAX_ITER
     args.backbone=cfg.MODEL.BACKBONE.CONV_BODY
+    args.deconv_bb=cfg.MODEL.BACKBONE.USE_DECONV
+    args.deconv_fpn=cfg.MODEL.FPN.USE_DECONV
+    args.deconv_rpn=cfg.MODEL.RPN.USE_DECONV
+    args.deconv_box=cfg.MODEL.ROI_BOX_HEAD.USE_DECONV
+    args.deconv_mask=cfg.MODEL.ROI_MASK_HEAD.USE_DECONV
+    args.sync=cfg.MODEL.DECONV.SYNC
+    args.norm_type=cfg.MODEL.DECONV.NORM_TYPE
+
+    args.gn_box=cfg.MODEL.ROI_BOX_HEAD.USE_GN
+    args.gw_box=cfg.MODEL.ROI_BOX_HEAD.USE_GW
 
     args.pretrained=False
     if cfg.MODEL.WEIGHT:
         args.pretrained=True
+
+    args.block=cfg.MODEL.DECONV.BLOCK
+    args.block_fc=cfg.MODEL.DECONV.BLOCK_FC
 
     args_dict = vars(args)
     data_folder_name = args_dict['dataset']
@@ -243,7 +259,20 @@ def save_path_formatter(args,cfg):
     key_map['max_iter'] = 'max_iter'
     key_map['lr']=''
     key_map['batch_size']='bs'
+    key_map['deconv_bb']='nd_bb'
+    key_map['deconv_fpn']='nd_fpn'
+    key_map['deconv_rpn']='nd_rpn'
+    key_map['deconv_box']='nd_box'
+    key_map['deconv_mask']='nd_mask'
+    key_map['gn_box']='gn'
+    key_map['gw_box']='gw'
+    key_map['block']='blk'
+    key_map['block_fc']='blk_fc'
+    key_map['sync']='sync'
+
     key_map['pretrained']='pretrain'
+
+    key_map['debug']='debug'
 
 
 
@@ -257,7 +286,6 @@ def save_path_formatter(args,cfg):
     save_path = ','.join(folder_string)
     timestamp = datetime.datetime.now().strftime("%m-%d-%H:%M")
     return os.path.join('checkpoints',save_path,timestamp)
-
 
 
 def main():
@@ -281,7 +309,7 @@ def main():
     parser.add_argument("--json-summary", help="Out file for DLLogger", default="dllogger.out",
                         type=str,
                         )
-    parser.add_argument("--debug", type=distutils.util.strtobool, default=False, help="debug")	
+    parser.add_argument("--debug", type=distutils.util.strtobool, default=False, help="debug")
     parser.add_argument(
         "opts",
         help="Modify config options using the command-line",
@@ -303,6 +331,9 @@ def main():
 
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
+    
+    if args.debug:
+        cfg.DEBUG=args.debug
 
     # Redundant option - Override config parameter with command line input
     if args.max_steps > 0:
@@ -316,8 +347,8 @@ def main():
     output_dir = cfg.OUTPUT_DIR
     if output_dir:
         mkdir(output_dir)
-    
-    args.log_dir=save_path_formatter(args,cfg)	
+
+    args.log_dir=save_path_formatter(args,cfg)
 
     logger = setup_logger("maskrcnn_benchmark", output_dir, get_rank())
     if is_main_process():
@@ -335,9 +366,10 @@ def main():
         config_str = "\n" + cf.read()
 
     dllogger.log(step="PARAMETER", data={"config":cfg})
-    
-    if args.local_rank==0:	
-        args.writer = SummaryWriter(args.log_dir,flush_secs=180)
+
+    if args.local_rank==0:
+        args.writer = SummaryWriter(args.log_dir,flush_secs=30)
+
 
     if args.fp16:
         fp16 = True
