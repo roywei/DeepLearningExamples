@@ -498,7 +498,6 @@ class NormalizedDeconv(conv._ConvNd):
 
         if x.numel()==0:
             return x
-        print(x.shape)
         N, C, H, W = x.shape
         B = self.block
 
