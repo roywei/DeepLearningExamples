@@ -21,8 +21,8 @@ class MaskRCNNC4Predictor(nn.Module):
             num_inputs = res2_out_channels * stage2_relative_factor
         if cfg.MODEL.ROI_MASK_HEAD.USE_DECONV:
             block=cfg.MODEL.DECONV.BLOCK
-            self.conv5_mask = NormalizedDeconvTransposed(num_inputs, dim_reduced, 2, 2, 0, block=block,sync=cfg.MODEL.DECONV.SYNC)
-            self.mask_fcn_logits = NormalizedDeconv(dim_reduced, num_classes, 1, 1, 0, block=block,sync=cfg.MODEL.DECONV.SYNC)
+            self.conv5_mask = NormalizedDeconvTransposed(num_inputs, dim_reduced, 2, 2, 0, block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
+            self.mask_fcn_logits = NormalizedDeconv(dim_reduced, num_classes, 1, 1, 0, block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
         else:
             self.conv5_mask = ConvTranspose2d(num_inputs, dim_reduced, 2, 2, 0)
             self.mask_fcn_logits = Conv2d(dim_reduced, num_classes, 1, 1, 0)

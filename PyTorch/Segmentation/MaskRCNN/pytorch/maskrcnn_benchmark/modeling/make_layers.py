@@ -67,7 +67,7 @@ def make_conv3x3(
     use_gw=False,
     use_relu=False,
     kaiming_init=True,
-    use_deconv=False,block=64,sync=False
+    use_deconv=False,block=64,sampling_stride=3,sync=False
 ):
     if use_deconv:
         conv = NormalizedDeconv(
@@ -79,6 +79,7 @@ def make_conv3x3(
             dilation=dilation, 
             bias=True,
             block=block,
+            sampling_stride=sampling_stride,
             sync=sync
         )
     else:
@@ -134,7 +135,7 @@ def make_fc(dim_in, hidden_dim, use_gn=False,use_gw=False,use_delinear=False,blo
     return fc
 
 
-def conv_with_kaiming_uniform(use_gn=False, use_gw=False,use_relu=False,use_deconv=False,block=64,sync=False):
+def conv_with_kaiming_uniform(use_gn=False, use_gw=False,use_relu=False,use_deconv=False,block=64,sampling_stride=3,sync=False):
     def make_conv(
         in_channels, out_channels, kernel_size, stride=1, dilation=1
     ):
@@ -148,6 +149,7 @@ def conv_with_kaiming_uniform(use_gn=False, use_gw=False,use_relu=False,use_deco
                 dilation=dilation, 
                 bias=True,
                 block=block,
+                sampling_stride=sampling_stride,
                 sync=sync
             )
         else:

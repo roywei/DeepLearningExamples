@@ -392,16 +392,22 @@ class NormalizedDelinear(nn.Module):
 
                 if torch.distributed.is_initialized():
                     world_size = torch.distributed.get_world_size(process_group)
-                    X_mean_list=[torch.empty_like(X_mean) for k in range(world_size)]
-                    #torch.distributed.all_gather(X_mean_list, X_mean, process_group, async_op=False)
-                    X_mean_list = diffdist.functional.all_gather(X_mean_list, X_mean)
-
-                    XX_mean_list=[torch.empty_like(XX_mean) for k in range(world_size)]
-                    #torch.distributed.all_gather(XX_mean_list, XX_mean, process_group, async_op=False)
-                    XX_mean_list = diffdist.functional.all_gather(XX_mean_list, XX_mean)
-
-                    X_mean=torch.stack(X_mean_list).mean(0)
-                    XX_mean=torch.stack(XX_mean_list).mean(0)
+                    
+                    #sync once implementation:
+                    sync_data=torch.cat([X_mean.view(-1),XX_mean.view(-1)],dim=0)
+                    sync_data_list=[torch.empty_like(sync_data) for k in range(world_size)]
+                    sync_data_list = diffdist.functional.all_gather(sync_data_list, sync_data)
+                    sync_data=torch.stack(sync_data_list).mean(0)
+                    X_mean=sync_data[:X_mean.numel()].view(X_mean.shape)
+                    XX_mean=sync_data[X_mean.numel():].view(XX_mean.shape)
+                    
+                    #sync twice implementation:
+                    #X_mean_list=[torch.empty_like(X_mean) for k in range(world_size)]
+                    #X_mean_list = diffdist.functional.all_gather(X_mean_list, X_mean)
+                    #XX_mean_list=[torch.empty_like(XX_mean) for k in range(world_size)]
+                    #XX_mean_list = diffdist.functional.all_gather(XX_mean_list, XX_mean)
+                    #X_mean=torch.stack(X_mean_list).mean(0)
+                    #XX_mean=torch.stack(XX_mean_list).mean(0)
 
                 cov= XX_mean- X_mean.unsqueeze(1) @X_mean.unsqueeze(0)
                 Id = torch.eye(cov.shape[1], dtype=cov.dtype, device=cov.device)
@@ -492,7 +498,7 @@ class NormalizedDeconv(conv._ConvNd):
 
         if x.numel()==0:
             return x
-
+        print(x.shape)
         N, C, H, W = x.shape
         B = self.block
 
@@ -553,16 +559,22 @@ class NormalizedDeconv(conv._ConvNd):
                     
                 if torch.distributed.is_initialized():
                     world_size = torch.distributed.get_world_size(process_group)
-                    X_mean_list=[torch.empty_like(X_mean) for k in range(world_size)]
-                    #torch.distributed.all_gather(X_mean_list, X_mean, process_group, async_op=False)
-                    X_mean_list = diffdist.functional.all_gather(X_mean_list, X_mean)
-
-                    XX_mean_list=[torch.empty_like(XX_mean) for k in range(world_size)]
-                    #torch.distributed.all_gather(XX_mean_list, XX_mean, process_group, async_op=False)
-                    XX_mean_list = diffdist.functional.all_gather(XX_mean_list, XX_mean)
-
-                    X_mean=torch.stack(X_mean_list).mean(0)
-                    XX_mean=torch.stack(XX_mean_list).mean(0)
+                    
+                    #sync once implementation:
+                    sync_data=torch.cat([X_mean.view(-1),XX_mean.view(-1)],dim=0)
+                    sync_data_list=[torch.empty_like(sync_data) for k in range(world_size)]
+                    sync_data_list = diffdist.functional.all_gather(sync_data_list, sync_data)
+                    sync_data=torch.stack(sync_data_list).mean(0)
+                    X_mean=sync_data[:X_mean.numel()].view(X_mean.shape)
+                    XX_mean=sync_data[X_mean.numel():].view(XX_mean.shape)
+                    
+                    #sync twice implementation:
+                    #X_mean_list=[torch.empty_like(X_mean) for k in range(world_size)]
+                    #X_mean_list = diffdist.functional.all_gather(X_mean_list, X_mean)
+                    #XX_mean_list=[torch.empty_like(XX_mean) for k in range(world_size)]
+                    #XX_mean_list = diffdist.functional.all_gather(XX_mean_list, XX_mean)
+                    #X_mean=torch.stack(X_mean_list).mean(0)
+                    #XX_mean=torch.stack(XX_mean_list).mean(0)
 
                 if self.groups==1:
                     cov= XX_mean- X_mean.unsqueeze(1) @X_mean.unsqueeze(0)
@@ -720,16 +732,22 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
 
                 if torch.distributed.is_initialized():
                     world_size = torch.distributed.get_world_size(process_group)
-                    X_mean_list=[torch.empty_like(X_mean) for k in range(world_size)]
-                    #torch.distributed.all_gather(X_mean_list, X_mean, process_group, async_op=False)
-                    X_mean_list = diffdist.functional.all_gather(X_mean_list, X_mean)
-
-                    XX_mean_list=[torch.empty_like(XX_mean) for k in range(world_size)]
-                    #torch.distributed.all_gather(XX_mean_list, XX_mean, process_group, async_op=False)
-                    XX_mean_list = diffdist.functional.all_gather(XX_mean_list, XX_mean)
-
-                    X_mean=torch.stack(X_mean_list).mean(0)
-                    XX_mean=torch.stack(XX_mean_list).mean(0)
+                    
+                    #sync once implementation:
+                    sync_data=torch.cat([X_mean.view(-1),XX_mean.view(-1)],dim=0)
+                    sync_data_list=[torch.empty_like(sync_data) for k in range(world_size)]
+                    sync_data_list = diffdist.functional.all_gather(sync_data_list, sync_data)
+                    sync_data=torch.stack(sync_data_list).mean(0)
+                    X_mean=sync_data[:X_mean.numel()].view(X_mean.shape)
+                    XX_mean=sync_data[X_mean.numel():].view(XX_mean.shape)
+                    
+                    #sync twice implementation:
+                    #X_mean_list=[torch.empty_like(X_mean) for k in range(world_size)]
+                    #X_mean_list = diffdist.functional.all_gather(X_mean_list, X_mean)
+                    #XX_mean_list=[torch.empty_like(XX_mean) for k in range(world_size)]
+                    #XX_mean_list = diffdist.functional.all_gather(XX_mean_list, XX_mean)
+                    #X_mean=torch.stack(X_mean_list).mean(0)
+                    #XX_mean=torch.stack(XX_mean_list).mean(0)
 
 
                 if self.groups==1:

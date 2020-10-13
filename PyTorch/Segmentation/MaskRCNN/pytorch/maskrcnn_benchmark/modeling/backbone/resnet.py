@@ -89,7 +89,7 @@ class ResNet(nn.Module):
         if 'Deconv' in cfg.MODEL.RESNETS.TRANS_FUNC:
             transformation_module=functools.partial(
                     _TRANSFORMATION_MODULES[cfg.MODEL.RESNETS.TRANS_FUNC],
-                    block=cfg.MODEL.DECONV.BLOCK,sync=cfg.MODEL.DECONV.SYNC)
+                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
         # Construct the stem module
         self.stem = stem_module(cfg)
 
@@ -330,6 +330,7 @@ class BottleneckWithDeconv(nn.Module):
         stride,
         dilation,
         block,
+        sampling_stride,
         sync
     ):
         super(BottleneckWithDeconv, self).__init__()
@@ -340,7 +341,7 @@ class BottleneckWithDeconv(nn.Module):
             self.downsample = nn.Sequential(
                 NormalizedDeconv(
                     in_channels, out_channels, 
-                    kernel_size=1, stride=down_stride, bias=True,block=block,sync=sync
+                    kernel_size=1, stride=down_stride, bias=True,block=block,sampling_stride=sampling_stride,sync=sync
                 ),
             )
             for modules in [self.downsample,]:
@@ -363,6 +364,7 @@ class BottleneckWithDeconv(nn.Module):
             stride=stride_1x1,
             bias=True,
             block=block,
+            sampling_stride=sampling_stride,
             sync=sync
             
         )
@@ -379,11 +381,12 @@ class BottleneckWithDeconv(nn.Module):
             groups=num_groups,
             dilation=dilation,
             block=block,
+            sampling_stride=sampling_stride,
             sync=sync
         )
 
         self.conv3 = NormalizedDeconv(
-            bottleneck_channels, out_channels, kernel_size=1, bias=True,block=block,sync=sync
+            bottleneck_channels, out_channels, kernel_size=1, bias=True,block=block,sampling_stride=sampling_stride,sync=sync
         )
 
         for l in [self.conv1, self.conv2, self.conv3,]:
@@ -441,7 +444,7 @@ class StemWithDeconv(nn.Module):
         out_channels = cfg.MODEL.RESNETS.STEM_OUT_CHANNELS
         block=cfg.MODEL.DECONV.BLOCK
         self.conv1 = NormalizedDeconv(
-            3, out_channels, kernel_size=7, stride=2, padding=3, bias=True,block=block,sync=cfg.MODEL.DECONV.SYNC
+            3, out_channels, kernel_size=7, stride=2, padding=3, bias=True,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC
         )            
         for l in [self.conv1,]:
             nn.init.kaiming_uniform_(l.weight, a=1)

@@ -239,7 +239,7 @@ def save_path_formatter(args,cfg):
     args.deconv_mask=cfg.MODEL.ROI_MASK_HEAD.USE_DECONV
     args.sync=cfg.MODEL.DECONV.SYNC
     args.norm_type=cfg.MODEL.DECONV.NORM_TYPE
-
+    args.sampling_stride=cfg.MODEL.DECONV.STRIDE
     args.gn_box=cfg.MODEL.ROI_BOX_HEAD.USE_GN
     args.gw_box=cfg.MODEL.ROI_BOX_HEAD.USE_GW
 
@@ -269,6 +269,7 @@ def save_path_formatter(args,cfg):
     key_map['block']='blk'
     key_map['block_fc']='blk_fc'
     key_map['sync']='sync'
+    key_map['sampling_stride']='stride'
 
     key_map['pretrained']='pretrain'
 
