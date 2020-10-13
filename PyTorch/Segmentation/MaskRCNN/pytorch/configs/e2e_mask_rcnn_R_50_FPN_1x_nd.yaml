@@ -45,14 +45,14 @@ MODEL:
     BLOCK_FC: 256
     SYNC: True
     #ITER: 5
-
+    STRIDE: 3
 DATASETS:
   TRAIN: ("coco_2017_train",)
   TEST: ("coco_2017_val",)
 DATALOADER:
   SIZE_DIVISIBILITY: 32
 SOLVER:
-  BASE_LR: 0.1
+  BASE_LR: 0.04
   WEIGHT_DECAY: 0.0001
   STEPS: (33000, 44000)
   MAX_ITER: 45000
@@ -65,4 +65,4 @@ INPUT:
   MIN_SIZE_TEST: 800
   MAX_SIZE_TEST: 1333
 PER_EPOCH_EVAL: True
-OUTPUT_DIR: "./outputs/nd.1"
+OUTPUT_DIR: "./outputs/nd.baseline"
