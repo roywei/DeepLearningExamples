@@ -13,8 +13,13 @@ class FastRCNNPredictor(nn.Module):
 
         num_classes = config.MODEL.ROI_BOX_HEAD.NUM_CLASSES
         self.avgpool = nn.AvgPool2d(kernel_size=7, stride=7)
-        self.cls_score = nn.Linear(num_inputs, num_classes)
-        self.bbox_pred = nn.Linear(num_inputs, num_classes * 4)
+        if config.MODEL.ROI_BOX_HEAD.USE_DECONV:
+            block=config.MODEL.DECONV.BLOCK_FC
+            self.cls_score = NormalizedDelinear(num_inputs, num_classes, block=block,sync=config.MODEL.DECONV.SYNC)
+            self.bbox_pred = NormalizedDelinear(num_inputs, num_classes * 4, block=block,sync=config.MODEL.DECONV.SYNC)
+        else:
+            self.cls_score = nn.Linear(num_inputs, num_classes)
+            self.bbox_pred = nn.Linear(num_inputs, num_classes * 4)
 
         nn.init.normal_(self.cls_score.weight, mean=0, std=0.01)
         nn.init.constant_(self.cls_score.bias, 0)
@@ -35,7 +40,7 @@ class FPNPredictor(nn.Module):
         super(FPNPredictor, self).__init__()
         num_classes = cfg.MODEL.ROI_BOX_HEAD.NUM_CLASSES
         representation_size = cfg.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM
-        if cfg.MODEL.FPN.USE_DECONV:
+        if cfg.MODEL.ROI_BOX_HEAD.USE_DECONV:
             block=cfg.MODEL.DECONV.BLOCK_FC
             self.cls_score = NormalizedDelinear(representation_size, num_classes,block=block,sync=cfg.MODEL.DECONV.SYNC)
             self.bbox_pred = NormalizedDelinear(representation_size, num_classes * 4,block=block,sync=cfg.MODEL.DECONV.SYNC)

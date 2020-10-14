@@ -8,7 +8,7 @@ from maskrcnn_benchmark.modeling.backbone import resnet
 from maskrcnn_benchmark.modeling.poolers import Pooler
 from maskrcnn_benchmark.modeling.make_layers import group_norm
 from maskrcnn_benchmark.modeling.make_layers import make_fc
-
+from maskrcnn_benchmark.layers import NormalizedDeconv
 
 @registry.ROI_BOX_FEATURE_EXTRACTORS.register("ResNet50Conv5ROIFeatureExtractor")
 class ResNet50Conv5ROIFeatureExtractor(nn.Module):
@@ -33,7 +33,8 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
             stride_in_1x1=config.MODEL.RESNETS.STRIDE_IN_1X1,
             stride_init=None,
             res2_out_channels=config.MODEL.RESNETS.RES2_OUT_CHANNELS,
-            dilation=config.MODEL.RESNETS.RES5_DILATION
+            dilation=config.MODEL.RESNETS.RES5_DILATION,
+            cfg=config
         )
 
         self.pooler = pooler
@@ -117,33 +118,57 @@ class FPNXconv1fcFeatureExtractor(nn.Module):
 
         xconvs = []
         for ix in range(num_stacked_convs):
-            xconvs.append(
-                nn.Conv2d(
-                    in_channels,
-                    conv_head_dim,
-                    kernel_size=3,
-                    stride=1,
-                    padding=dilation,
-                    dilation=dilation,
-                    bias=False if (use_gn or use_gw) else True
+            if cfg.MODEL.ROI_BOX_HEAD.USE_DECONV:
+                xconvs.append(
+                    NormalizedDeconv(
+                        in_channels,
+                        conv_head_dim,
+                        kernel_size=3,
+                        stride=1,
+                        padding=dilation,
+                        dilation=dilation,
+                        bias= True,
+                        block=cfg.MODEL.DECONV.BLOCK,
+                        sampling_stride=cfg.MODEL.DECONV.STRIDE,
+                        sync=cfg.MODEL.DECONV.SYNC
+                    )
                 )
-            )
-            in_channels = conv_head_dim
-            if use_gn or use_gw:
-                xconvs.append(group_norm(in_channels))
+                in_channels = conv_head_dim
+            else:
+                xconvs.append(
+                    nn.Conv2d(
+                        in_channels,
+                        conv_head_dim,
+                        kernel_size=3,
+                        stride=1,
+                        padding=dilation,
+                        dilation=dilation,
+                        bias=False if (use_gn or use_gw) else True
+                    )
+                )
+                in_channels = conv_head_dim
+                if use_gn or use_gw:
+                    xconvs.append(group_norm(in_channels))
+
             xconvs.append(nn.ReLU(inplace=True))
 
         self.add_module("xconvs", nn.Sequential(*xconvs))
         for modules in [self.xconvs,]:
             for l in modules.modules():
-                if isinstance(l, nn.Conv2d):
+                if isinstance(l, nn.Conv2d) or isinstance(l,NormalizedDeconv):
                     torch.nn.init.normal_(l.weight, std=0.01)
                     if not (use_gn or use_gw):
                         torch.nn.init.constant_(l.bias, 0)
 
         input_size = conv_head_dim * resolution ** 2
         representation_size = cfg.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM
-        self.fc6 = make_fc(input_size, representation_size, use_gn=False,use_gw=False)
+
+        block=0
+        use_delinear=cfg.MODEL.ROI_BOX_HEAD.USE_DECONV
+        if use_delinear:
+            block=cfg.MODEL.DECONV.BLOCK_FC#check here
+        
+        self.fc6 = make_fc(input_size, representation_size, use_gn=False,use_gw=False,use_delinear=use_delinear,block=block,sync=cfg.MODEL.DECONV.SYNC)
 
     def forward(self, x, proposals):
         x = self.pooler(x, proposals)

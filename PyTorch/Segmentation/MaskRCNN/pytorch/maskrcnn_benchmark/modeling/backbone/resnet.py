@@ -90,6 +90,7 @@ class ResNet(nn.Module):
             transformation_module=functools.partial(
                     _TRANSFORMATION_MODULES[cfg.MODEL.RESNETS.TRANS_FUNC],
                     block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
+                    
         # Construct the stem module
         self.stem = stem_module(cfg)
 
@@ -157,7 +158,8 @@ class ResNetHead(nn.Module):
         stride_in_1x1=True,
         stride_init=None,
         res2_out_channels=256,
-        dilation=1
+        dilation=1,
+        cfg=None
     ):
         super(ResNetHead, self).__init__()
 
@@ -168,6 +170,12 @@ class ResNetHead(nn.Module):
         bottleneck_channels = stage2_bottleneck_channels * stage2_relative_factor
 
         block_module = _TRANSFORMATION_MODULES[block_module]
+
+        if 'Deconv' in cfg.MODEL.RESNETS.TRANS_FUNC:
+            block_module=functools.partial(
+                    _TRANSFORMATION_MODULES[cfg.MODEL.RESNETS.TRANS_FUNC],
+                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
+
 
         self.stages = []
         stride = stride_init
