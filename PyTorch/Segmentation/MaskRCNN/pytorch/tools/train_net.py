@@ -232,7 +232,6 @@ def save_path_formatter(args,cfg):
     args.batch_size=cfg.SOLVER.IMS_PER_BATCH
     args.max_iter=cfg.SOLVER.MAX_ITER
     args.backbone=cfg.MODEL.BACKBONE.CONV_BODY
-    args.deconv_bb=cfg.MODEL.BACKBONE.USE_DECONV
     args.deconv_fpn=cfg.MODEL.FPN.USE_DECONV
     args.deconv_rpn=cfg.MODEL.RPN.USE_DECONV
     args.deconv_box=cfg.MODEL.ROI_BOX_HEAD.USE_DECONV
