@@ -344,7 +344,7 @@ _C.DTYPE = "float32"
 _C.AMP_VERBOSE = False
 
 # Evaluate every epoch
-_C.PER_EPOCH_EVAL = False
+_C.PER_EPOCH_EVAL = True #let's evaluate to check the improvements
 _C.MIN_BBOX_MAP = 0.377
 _C.MIN_MASK_MAP = 0.342
 

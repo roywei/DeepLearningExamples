@@ -7,7 +7,7 @@ import time
 import torch
 import torch.distributed as dist
 
-from maskrcnn_benchmark.utils.comm import get_world_size
+from maskrcnn_benchmark.utils.comm import get_world_size,is_main_process
 from maskrcnn_benchmark.utils.metric_logger import MetricLogger
 
 try:
@@ -115,8 +115,8 @@ def do_train(
                         "memory": torch.cuda.max_memory_allocated() / 1024.0 / 1024.0 }
             log_data.update(meters.get_dict())
             dllogger.log(step=(iteration,), data=log_data)
-        if iteration % 100 == 0 or iteration == max_iter:
-            if args.local_rank==0:
+        if iteration % args.print_freq == 0 or iteration == max_iter:
+            if is_main_process():
                 args.writer.add_scalar('Loss/loss', losses_reduced.item(), iteration)
                 for k,v in loss_dict_reduced.items():
                     args.writer.add_scalar('Loss/'+k, v.item(), iteration)

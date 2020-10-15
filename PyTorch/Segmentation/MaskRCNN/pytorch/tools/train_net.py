@@ -93,7 +93,7 @@ def mlperf_test_early_exit(iteration, iters_per_epoch, tester, model, distribute
         # terminating condition
         if bbox_map >= min_bbox_map and segm_map >= min_segm_map:
             dllogger.log(step="PARAMETER", data={"target_accuracy_reached": True})
-            return True
+            return False#True #let's continue the training
 
     return False
 
@@ -220,10 +220,8 @@ def test_model(cfg, model, distributed, iters_per_epoch, dllogger,args):
         segm_map = map_results.results["segm"]['AP']
         dllogger.log(step=(cfg.SOLVER.MAX_ITER, cfg.SOLVER.MAX_ITER / iters_per_epoch,), data={"BBOX_mAP": bbox_map, "MASK_mAP": segm_map})
         dllogger.log(step=tuple(), data={"BBOX_mAP": bbox_map, "MASK_mAP": segm_map})
-        if args.local_rank==0:
-
-            args.writer.add_scalar('BBOX_mAP', bbox_map, cfg.SOLVER.MAX_ITER / iters_per_epoch)
-            args.writer.add_scalar('MASK_mAP', segm_map, cfg.SOLVER.MAX_ITER / iters_per_epoch)
+        args.writer.add_scalar('BBOX_mAP', bbox_map, cfg.SOLVER.MAX_ITER / iters_per_epoch+1)
+        args.writer.add_scalar('MASK_mAP', segm_map, cfg.SOLVER.MAX_ITER / iters_per_epoch+1)
 
 
 def save_path_formatter(args,cfg):
@@ -309,6 +307,7 @@ def main():
                         type=str,
                         )
     parser.add_argument("--debug", type=distutils.util.strtobool, default=False, help="debug")
+    parser.add_argument("--print-freq", type=int, default=500, help="print freq for tensorboard")
     parser.add_argument(
         "opts",
         help="Modify config options using the command-line",
@@ -378,8 +377,8 @@ def main():
     model, iters_per_epoch = train(cfg, args.local_rank, args.distributed, fp16, dllogger, args)
 
     if not args.skip_test:
-        if not cfg.PER_EPOCH_EVAL:
-            test_model(cfg, model, args.distributed, iters_per_epoch, dllogger, args)
+        #if not cfg.PER_EPOCH_EVAL:
+        test_model(cfg, model, args.distributed, iters_per_epoch, dllogger, args)
 
 
 if __name__ == "__main__":
