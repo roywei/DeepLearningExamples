@@ -25,7 +25,7 @@ class RPNHead(nn.Module):
             num_anchors (int): number of anchors to be predicted
         """
         super(RPNHead, self).__init__()
-        if (cfg.MODEL.RPN.USE_DECONV):
+        if cfg.MODEL.RPN.USE_DECONV:
             self.conv = NormalizedDeconv(in_channels, in_channels, kernel_size=3, stride=1, padding=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
             self.cls_logits = NormalizedDeconv(in_channels, num_anchors, kernel_size=1, stride=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
             self.bbox_pred = NormalizedDeconv(in_channels, num_anchors * 4, kernel_size=1, stride=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)

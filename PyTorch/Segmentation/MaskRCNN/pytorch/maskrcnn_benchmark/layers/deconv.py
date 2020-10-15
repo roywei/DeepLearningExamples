@@ -358,9 +358,11 @@ class NormalizedDelinear(nn.Module):
         if input.numel()==0:
             return input
         if self.norm_type=='layernorm':
-            mean = input.mean(-1,keepdim=True)
-            std = input.std(-1,keepdim=True)
-            input = (input - mean) / (std + self.eps)
+            input=F.layer_norm(input, input.shape[1:], weight=None, bias=None, eps=self.eps)
+
+            #mean = input.mean(-1,keepdim=True)
+            #std = input.std(-1,keepdim=True)
+            #input = (input - mean) / (std + self.eps)
         elif self.norm_type=='groupnorm':
             N,C=input.shape
             G=min(16,self.block)
@@ -503,11 +505,7 @@ class NormalizedDeconv(conv._ConvNd):
 
 
         if self.norm_type=='layernorm':
-            x=x.reshape(N,-1)
-            mean = x.mean(-1,keepdim=True)
-            std = x.std(-1,keepdim=True)
-            x = (x - mean) / (std + self.eps)
-            x=x.reshape(N,C,H,W)
+            x=F.layer_norm(x, x.shape[1:], weight=None, bias=None, eps=self.eps)
 
         elif self.norm_type=='groupnorm':
             G=min(16,B)
@@ -676,11 +674,7 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
         B = self.block
         
         if self.norm_type=='layernorm':
-            x=x.reshape(N,-1)
-            mean = x.mean(-1,keepdim=True)
-            std = x.std(-1,keepdim=True)
-            x = (x - mean) / (std + self.eps)
-            x=x.reshape(N,C,H,W)
+            x=F.layer_norm(x, x.shape[1:], weight=None, bias=None, eps=self.eps)
 
         elif self.norm_type=='groupnorm':
             G=min(16,B)

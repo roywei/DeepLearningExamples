@@ -318,12 +318,9 @@ class Bottleneck(nn.Module):
             identity = self.downsample(x)
 
         out += identity
-        #print('identity:',identity.std(),'out',out.std())
 
         out = F.relu_(out)
-        
-        #print('o:',out.std())
-        
+                
         return out
 
 
@@ -415,12 +412,9 @@ class BottleneckWithDeconv(nn.Module):
             identity = self.downsample(x)
 
         out = out + identity
-        #print('identity:',identity.std(),'out',out.std())
-
+       
         out = F.relu_(out)
         
-        #print('o:',out.std())
-
         return out
 
 

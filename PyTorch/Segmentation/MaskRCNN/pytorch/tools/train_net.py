@@ -259,7 +259,6 @@ def save_path_formatter(args,cfg):
     key_map['max_iter'] = 'max_iter'
     key_map['lr']=''
     key_map['batch_size']='bs'
-    key_map['deconv_bb']='nd_bb'
     key_map['deconv_fpn']='nd_fpn'
     key_map['deconv_rpn']='nd_rpn'
     key_map['deconv_box']='nd_box'
