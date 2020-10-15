@@ -115,9 +115,9 @@ def do_train(
                         "memory": torch.cuda.max_memory_allocated() / 1024.0 / 1024.0 }
             log_data.update(meters.get_dict())
             dllogger.log(step=(iteration,), data=log_data)
-        if iteration % 20 == 0 or iteration == max_iter:
+        if iteration % 100 == 0 or iteration == max_iter:
             if args.local_rank==0:
-                args.writer.add_scalar('Loss/total_loss', losses_reduced.item(), iteration)
+                args.writer.add_scalar('Loss/loss', losses_reduced.item(), iteration)
                 for k,v in loss_dict_reduced.items():
                     args.writer.add_scalar('Loss/'+k, v.item(), iteration)
         if cfg.SAVE_CHECKPOINT:
