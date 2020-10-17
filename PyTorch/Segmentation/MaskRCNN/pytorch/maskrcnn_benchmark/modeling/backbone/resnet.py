@@ -89,7 +89,7 @@ class ResNet(nn.Module):
         if 'Deconv' in cfg.MODEL.RESNETS.TRANS_FUNC:
             transformation_module=functools.partial(
                     _TRANSFORMATION_MODULES[cfg.MODEL.RESNETS.TRANS_FUNC],
-                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
+                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE)
                     
         # Construct the stem module
         self.stem = stem_module(cfg)
@@ -174,7 +174,7 @@ class ResNetHead(nn.Module):
         if 'Deconv' in cfg.MODEL.RESNETS.TRANS_FUNC:
             block_module=functools.partial(
                     _TRANSFORMATION_MODULES[cfg.MODEL.RESNETS.TRANS_FUNC],
-                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
+                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE)
 
 
         self.stages = []
@@ -336,7 +336,8 @@ class BottleneckWithDeconv(nn.Module):
         dilation,
         block,
         sampling_stride,
-        sync
+        sync,
+        norm_type
     ):
         super(BottleneckWithDeconv, self).__init__()
 
@@ -346,7 +347,7 @@ class BottleneckWithDeconv(nn.Module):
             self.downsample = nn.Sequential(
                 NormalizedDeconv(
                     in_channels, out_channels, 
-                    kernel_size=1, stride=down_stride, bias=True,block=block,sampling_stride=sampling_stride,sync=sync
+                    kernel_size=1, stride=down_stride, bias=True,block=block,sampling_stride=sampling_stride,sync=sync,norm_type=norm_type
                 ),
             )
             for modules in [self.downsample,]:
@@ -370,7 +371,8 @@ class BottleneckWithDeconv(nn.Module):
             bias=True,
             block=block,
             sampling_stride=sampling_stride,
-            sync=sync
+            sync=sync,
+            norm_type=norm_type
             
         )
 
@@ -387,11 +389,12 @@ class BottleneckWithDeconv(nn.Module):
             dilation=dilation,
             block=block,
             sampling_stride=sampling_stride,
-            sync=sync
+            sync=sync,
+            norm_type=norm_type
         )
 
         self.conv3 = NormalizedDeconv(
-            bottleneck_channels, out_channels, kernel_size=1, bias=True,block=block,sampling_stride=sampling_stride,sync=sync
+            bottleneck_channels, out_channels, kernel_size=1, bias=True,block=block,sampling_stride=sampling_stride,sync=sync,norm_type=norm_type
         )
 
         for l in [self.conv1, self.conv2, self.conv3,]:
@@ -446,7 +449,7 @@ class StemWithDeconv(nn.Module):
         out_channels = cfg.MODEL.RESNETS.STEM_OUT_CHANNELS
         block=cfg.MODEL.DECONV.BLOCK
         self.conv1 = NormalizedDeconv(
-            3, out_channels, kernel_size=7, stride=2, padding=3, bias=True,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC
+            3, out_channels, kernel_size=7, stride=2, padding=3, bias=True,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.STEM_NORM_TYPE
         )            
         for l in [self.conv1,]:
             nn.init.kaiming_uniform_(l.weight, a=1)

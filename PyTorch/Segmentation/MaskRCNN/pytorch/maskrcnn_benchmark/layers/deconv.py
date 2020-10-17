@@ -317,7 +317,7 @@ class Delinear(nn.Module):
 class NormalizedDelinear(nn.Module):
     __constants__ = ['bias', 'in_features', 'out_features']
 
-    def __init__(self, in_features, out_features, bias=True, eps=1e-5, n_iter=5, momentum=0.1, block=512,norm_type='layernorm',sync=False):
+    def __init__(self, in_features, out_features, bias=True, eps=1e-5, n_iter=5, momentum=0.1, block=512,norm_type='none',sync=False):
         super(NormalizedDelinear, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
@@ -357,6 +357,9 @@ class NormalizedDelinear(nn.Module):
     def forward(self, input):
         if input.numel()==0:
             return input
+        if self.norm_type=='l1norm':
+            input_norm=input.abs().mean(dim=-1,keepdim=True)
+            input =  input/ (input_norm + self.eps)
         if self.norm_type=='layernorm':
             #input=F.layer_norm(input, input.shape[1:], weight=None, bias=None, eps=self.eps)
             mean = input.mean(-1,keepdim=True)#these are way faster
@@ -453,16 +456,21 @@ class NormalizedDelinear(nn.Module):
 
 class NormalizedDeconv(conv._ConvNd):
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1,groups=1,bias=True, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,freeze=False,freeze_iter=100,norm_type='layernorm',sync=False):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1,groups=1,bias=True, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,freeze=False,freeze_iter=100,norm_type='none',sync=False,max_channels=4096):
   
         self.momentum = momentum
         self.n_iter = n_iter
         self.eps = eps
         self.counter=0
         self.track_running_stats=True
+        self.max_channels=max_channels
         super(NormalizedDeconv, self).__init__(
             in_channels, out_channels,  _pair(kernel_size), _pair(stride), _pair(padding), _pair(dilation),
             False, _pair(0), groups, bias, padding_mode='zeros')
+
+        #no im2col for this many channels to save some gpu ram
+        if in_channels>self.max_channels and self.kernel_size[0]>1:
+            block*=4
 
         if block > in_channels:
             block = in_channels
@@ -476,7 +484,11 @@ class NormalizedDeconv(conv._ConvNd):
 
         self.block=block
 
-        self.num_features = kernel_size**2 *block
+        if in_channels<=self.max_channels:#else only channel wise        
+            self.num_features = kernel_size**2 *block
+        else:
+            self.num_features=block
+
         if groups==1:
             self.register_buffer('running_mean', torch.zeros(self.num_features))
             self.register_buffer('running_cov_isqrt', torch.eye(self.num_features))
@@ -502,6 +514,14 @@ class NormalizedDeconv(conv._ConvNd):
         N, C, H, W = x.shape
         B = self.block
 
+        if self.norm_type=='l1norm':
+            #x_norm=x.abs().mean(dim=(1,2,3),keepdim=True)
+            C_stride=1
+            if C>self.sampling_stride*5:
+                C_stride=self.sampling_stride
+            x_norm=x[:,::C_stride,::self.sampling_stride,::self.sampling_stride].abs().mean(dim=(1,2,3),keepdim=True)
+            
+            x =  x/ (x_norm + self.eps)
 
         if self.norm_type=='layernorm':
             #x1=F.layer_norm(x, x.shape[1:], weight=None, bias=None, eps=self.eps)
@@ -530,7 +550,7 @@ class NormalizedDeconv(conv._ConvNd):
         if self.training and (not frozen):
 
             # 1. im2col: N x cols x pixels -> N*pixles x cols
-            if self.kernel_size[0]>1:
+            if self.kernel_size[0]>1 and C<=self.max_channels:
                 X = torch.nn.functional.unfold(x, self.kernel_size,self.dilation,self.padding,self.sampling_stride).transpose(1, 2).contiguous()
             else:
                 #channel wise
@@ -631,7 +651,7 @@ class NormalizedDeconv(conv._ConvNd):
 
 class NormalizedDeconvTransposed(conv._ConvTransposeNd):
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1,bias=True, dilation=1, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,norm_type='layernorm',sync=False):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1,bias=True, dilation=1, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,norm_type='none',sync=False):
 
 
         self.momentum = momentum
@@ -678,6 +698,13 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
         N, C, H, W = x.shape
         B = self.block
         
+        if self.norm_type=='l1norm':
+            x_norm=x.abs().mean(dim=(1,2,3),keepdim=True)
+            #C_stride=1
+            #if C>self.sampling_stride*5:
+            #    C_stride=self.sampling_stride
+            #x_norm=x[:,::C_stride,::self.sampling_stride,::self.sampling_stride].abs().mean(dim=(1,2,3),keepdim=True)
+
         if self.norm_type=='layernorm':
             #x1=F.layer_norm(x, x.shape[1:], weight=None, bias=None, eps=self.eps)
             x=x.reshape(N,-1)#shit, this is much faster but takes more gpu ram
@@ -862,52 +889,3 @@ def isqrt_newton_schulz_autograd_batch(A, numIters):
 
     return A_isqrt
 
-
-
-
-
-"""
-#this does not work
-
-def transform_bn_to_nd(state_dict):
-    #this function is assuming each bn is paired with a conv in the following straightforward way
-    print('Transforming batch normalization to network deconvolution in a pretrained model.')
-    original_keys = sorted(state_dict.keys())
-    bn_keys=[k for k in original_keys if ('bn' in k  or 'downsample.1' in k) ]
-
-    for bn_bias in bn_keys:#this is assuming bias is used in bn
-
-        if 'bias' in bn_bias:
-            conv_bias=bn_bias.replace("bn", "conv").replace("downsample.1", "downsample.0")#bn in downsampling
-            conv_weight=bn_bias.replace("bias", "weight").replace("bn", "conv").replace("downsample.1", "downsample.0")#bn in downsampling
-
-            bn_running_mean=bn_bias.replace("bias", "running_mean")
-            bn_running_var=bn_bias.replace("bias", "running_var")
-            bn_weight=bn_bias.replace("bias", "weight")
-
-            if bn_running_mean in state_dict:
-                mu=state_dict[bn_running_mean]
-            else:
-                mu=0.
-            if bn_running_var in state_dict:
-                rstd=torch.rsqrt(state_dict[bn_running_var])
-            else:
-                rstd=1.
-
-            print(conv_weight, state_dict[conv_weight].shape,' scaled with ', bn_weight, state_dict[bn_weight].shape)
-
-            state_dict[conv_weight]=state_dict[conv_weight]*(rstd*state_dict[bn_weight]).view(-1,1,1,1)
-            if conv_bias in state_dict:
-                print(conv_bias, state_dict[conv_bias].shape,' replaced with ', bn_bias, state_dict[bn_bias].shape)
-                mu=mu-state_dict[conv_bias]
-            else:
-                print(conv_bias, 'created with ', bn_bias, state_dict[bn_bias].shape)
-
-                state_dict[conv_bias]=state_dict[bn_bias]-mu*rstd*state_dict[bn_weight]
-
-            
-    for bn_key in bn_keys:
-        del state_dict[bn_key]
-    return state_dict
-
-"""

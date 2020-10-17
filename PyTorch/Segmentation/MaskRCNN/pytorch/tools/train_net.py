@@ -230,15 +230,19 @@ def save_path_formatter(args,cfg):
     args.batch_size=cfg.SOLVER.IMS_PER_BATCH
     args.max_iter=cfg.SOLVER.MAX_ITER
     args.backbone=cfg.MODEL.BACKBONE.CONV_BODY
-    args.deconv_fpn=cfg.MODEL.FPN.USE_DECONV
-    args.deconv_rpn=cfg.MODEL.RPN.USE_DECONV
-    args.deconv_box=cfg.MODEL.ROI_BOX_HEAD.USE_DECONV
-    args.deconv_mask=cfg.MODEL.ROI_MASK_HEAD.USE_DECONV
+    #args.deconv_fpn=cfg.MODEL.FPN.USE_DECONV
+    #args.deconv_rpn=cfg.MODEL.RPN.USE_DECONV
+    #args.deconv_box=cfg.MODEL.ROI_BOX_HEAD.USE_DECONV
+    #args.deconv_mask=cfg.MODEL.ROI_MASK_HEAD.USE_DECONV
+    args.use_nd=cfg.MODEL.ROI_BOX_HEAD.USE_DECONV
     args.sync=cfg.MODEL.DECONV.SYNC
-    args.norm_type=cfg.MODEL.DECONV.NORM_TYPE
+    args.norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE
     args.sampling_stride=cfg.MODEL.DECONV.STRIDE
     args.gn_box=cfg.MODEL.ROI_BOX_HEAD.USE_GN
     args.gw_box=cfg.MODEL.ROI_BOX_HEAD.USE_GW
+    args.train_size=cfg.INPUT.MIN_SIZE_TRAIN
+
+    args.accum_steps=cfg.SOLVER.ACCUMULATE_STEPS
 
     args.pretrained=False
     if cfg.MODEL.WEIGHT:
@@ -256,20 +260,25 @@ def save_path_formatter(args,cfg):
     key_map['max_iter'] = 'max_iter'
     key_map['lr']=''
     key_map['batch_size']='bs'
-    key_map['deconv_fpn']='nd_fpn'
-    key_map['deconv_rpn']='nd_rpn'
-    key_map['deconv_box']='nd_box'
-    key_map['deconv_mask']='nd_mask'
+    #key_map['deconv_fpn']='nd_fpn'
+    #key_map['deconv_rpn']='nd_rpn'
+    #key_map['deconv_box']='nd_box'
+    #key_map['deconv_mask']='nd_mask'
+    key_map['use_nd']='nd'
     key_map['gn_box']='gn'
     key_map['gw_box']='gw'
     key_map['block']='blk'
     key_map['block_fc']='blk_fc'
     key_map['sync']='sync'
     key_map['sampling_stride']='stride'
+    key_map['norm_type']=''
+    key_map['train_size']='size'
 
     key_map['pretrained']='pretrain'
 
     key_map['debug']='debug'
+    if cfg.SOLVER.ACCUMULATE_GRAD:
+        key_map['accum_steps']='cum'
 
 
 

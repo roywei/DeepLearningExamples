@@ -76,8 +76,8 @@ class FPN2MLPFeatureExtractor(nn.Module):
             block=cfg.MODEL.DECONV.BLOCK_FC#check here
         
         self.pooler = pooler
-        self.fc6 = make_fc(input_size, representation_size, use_gn,use_gw,use_delinear,block=block,sync=cfg.MODEL.DECONV.SYNC)
-        self.fc7 = make_fc(representation_size, representation_size, use_gn,use_gw,use_delinear,block=block,sync=cfg.MODEL.DECONV.SYNC)
+        self.fc6 = make_fc(input_size, representation_size, use_gn,use_gw,use_delinear,block=block,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE)
+        self.fc7 = make_fc(representation_size, representation_size, use_gn,use_gw,use_delinear,block=block,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE)
 
     def forward(self, x, proposals):
         x = self.pooler(x, proposals)
@@ -130,7 +130,8 @@ class FPNXconv1fcFeatureExtractor(nn.Module):
                         bias= True,
                         block=cfg.MODEL.DECONV.BLOCK,
                         sampling_stride=cfg.MODEL.DECONV.STRIDE,
-                        sync=cfg.MODEL.DECONV.SYNC
+                        sync=cfg.MODEL.DECONV.SYNC,
+                        norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE
                     )
                 )
                 in_channels = conv_head_dim
@@ -168,7 +169,7 @@ class FPNXconv1fcFeatureExtractor(nn.Module):
         if use_delinear:
             block=cfg.MODEL.DECONV.BLOCK_FC#check here
         
-        self.fc6 = make_fc(input_size, representation_size, use_gn=False,use_gw=False,use_delinear=use_delinear,block=block,sync=cfg.MODEL.DECONV.SYNC)
+        self.fc6 = make_fc(input_size, representation_size, use_gn=False,use_gw=False,use_delinear=use_delinear,block=block,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE)
 
     def forward(self, x, proposals):
         x = self.pooler(x, proposals)
