@@ -514,13 +514,8 @@ class NormalizedDeconv(conv._ConvNd):
         N, C, H, W = x.shape
         B = self.block
 
-        if self.norm_type=='l1norm':
-            #x_norm=x.abs().mean(dim=(1,2,3),keepdim=True)
-            C_stride=1
-            if C>self.sampling_stride*5:
-                C_stride=self.sampling_stride
-            x_norm=x[:,::C_stride,::self.sampling_stride,::self.sampling_stride].abs().mean(dim=(1,2,3),keepdim=True)
-            
+        if self.norm_type=='l1norm':#poor results
+            x_norm=x.abs().mean(dim=(1,2,3),keepdim=True)
             x =  x/ (x_norm + self.eps)
 
         if self.norm_type=='layernorm':
@@ -700,10 +695,7 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
         
         if self.norm_type=='l1norm':
             x_norm=x.abs().mean(dim=(1,2,3),keepdim=True)
-            #C_stride=1
-            #if C>self.sampling_stride*5:
-            #    C_stride=self.sampling_stride
-            #x_norm=x[:,::C_stride,::self.sampling_stride,::self.sampling_stride].abs().mean(dim=(1,2,3),keepdim=True)
+            x =  x/ (x_norm + self.eps)
 
         if self.norm_type=='layernorm':
             #x1=F.layer_norm(x, x.shape[1:], weight=None, bias=None, eps=self.eps)
