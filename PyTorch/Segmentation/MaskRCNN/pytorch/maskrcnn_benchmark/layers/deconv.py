@@ -561,6 +561,13 @@ class NormalizedDeconv(conv._ConvNd):
     
             x= (x-x_mean) / (var.sqrt()+self.eps)
 
+            x=x.reshape(N,-1)
+            mean = x.mean(-1,keepdim=True)
+            std = x.std(-1,keepdim=True)
+            x = (x - mean) / (std + self.eps)
+            x=x.view(N,C,H,W)
+
+
         if self.training:
             self.counter+=1
             frozen=self.freeze and (self.counter% (self.freeze_iter * 10) >self.freeze_iter)

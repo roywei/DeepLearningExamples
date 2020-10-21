@@ -86,7 +86,7 @@ def mlperf_test_early_exit(iteration, iters_per_epoch, tester, model, distribute
         model.train()
         dllogger.log(step=(iteration, epoch, ), data={"BBOX_mAP": bbox_map, "MASK_mAP": segm_map})
 
-        if args.local_rank==0:
+        if is_main_process():
             args.writer.add_scalar('BBOX_mAP', bbox_map, epoch)
             args.writer.add_scalar('MASK_mAP', segm_map, epoch)
 
@@ -220,6 +220,7 @@ def test_model(cfg, model, distributed, iters_per_epoch, dllogger,args):
         segm_map = map_results.results["segm"]['AP']
         dllogger.log(step=(cfg.SOLVER.MAX_ITER, cfg.SOLVER.MAX_ITER / iters_per_epoch,), data={"BBOX_mAP": bbox_map, "MASK_mAP": segm_map})
         dllogger.log(step=tuple(), data={"BBOX_mAP": bbox_map, "MASK_mAP": segm_map})
+
         args.writer.add_scalar('BBOX_mAP', bbox_map, cfg.SOLVER.MAX_ITER / iters_per_epoch+1)
         args.writer.add_scalar('MASK_mAP', segm_map, cfg.SOLVER.MAX_ITER / iters_per_epoch+1)
 
@@ -316,7 +317,7 @@ def main():
                         type=str,
                         )
     parser.add_argument("--debug", type=distutils.util.strtobool, default=False, help="debug")
-    parser.add_argument("--print-freq", type=int, default=500, help="print freq for tensorboard")
+    parser.add_argument("--print-freq", type=int, default=100, help="print freq for tensorboard")
     parser.add_argument(
         "opts",
         help="Modify config options using the command-line",
