@@ -536,7 +536,30 @@ class NormalizedDeconv(conv._ConvNd):
             x = (x - mean) / (std + self.eps)
             #x=x.reshape(N,G,C//G,H,W).transpose(1,2)
             x=x.reshape(N,C,H,W)
+        elif self.norm_type=='rfnorm': #receptive field normalization
+            
+            k=self.kernel_size[0]
+            assert k%2==1 #only support odd numbers 
 
+            n=k*k
+            
+            # Build integral image
+            p=k//2
+            xp=F.pad(x,(1+p,p,1+p,p),mode='constant',value=0)
+            x2 = xp **2
+            x_cumsum = xp.cumsum(dim=2).cumsum(dim=3)
+            x2_cumsum = x2.cumsum(dim=2).cumsum(dim=3)
+
+            #box filter results
+            x_mean=x_cumsum[:,:,k:,k:]-x_cumsum[:,:,k:,:-k]-x_cumsum[:,:,:-k,k:]+x_cumsum[:,:,:-k,:-k]
+            x_mean=(x_mean/n).mean(1,keepdim=True)
+            x2_mean=x2_cumsum[:,:,k:,k:]-x2_cumsum[:,:,k:,:-k]-x2_cumsum[:,:,:-k,k:]+x2_cumsum[:,:,:-k,:-k]
+            x2_mean=(x2_mean/n).mean(1,keepdim=True)
+            
+            var =  x2_mean - x_mean**2
+            var = torch.clamp(var,min= 0.)
+    
+            x= (x-x_mean) / (var.sqrt()+self.eps)
 
         if self.training:
             self.counter+=1
