@@ -241,7 +241,7 @@ def save_path_formatter(args,cfg):
     args.gn_box=cfg.MODEL.ROI_BOX_HEAD.USE_GN
     args.gw_box=cfg.MODEL.ROI_BOX_HEAD.USE_GW
     args.train_size=cfg.INPUT.MIN_SIZE_TRAIN
-
+    args.wd=cfg.SOLVER.WEIGHT_DECAY
     args.accum_steps=cfg.SOLVER.ACCUMULATE_STEPS
 
     args.pretrained=False
@@ -275,7 +275,7 @@ def save_path_formatter(args,cfg):
     key_map['train_size']='size'
     key_map['pretrained']='pretrain'
 
-    key_map['debug']='debug'
+    #key_map['debug']='debug'
     if cfg.SOLVER.ACCUMULATE_GRAD:
         key_map['accum_steps']='cum'
 
