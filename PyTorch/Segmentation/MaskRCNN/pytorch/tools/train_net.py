@@ -274,6 +274,7 @@ def save_path_formatter(args,cfg):
     key_map['norm_type']=''
     key_map['train_size']='size'
     key_map['pretrained']='pretrain'
+    key_map['wd']='wd'
 
     #key_map['debug']='debug'
     if cfg.SOLVER.ACCUMULATE_GRAD:
