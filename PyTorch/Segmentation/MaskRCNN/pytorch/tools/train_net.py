@@ -375,7 +375,7 @@ def main():
 
     dllogger.log(step="PARAMETER", data={"config":cfg})
 
-    if args.local_rank==0:
+    if is_main_process():
         args.writer = SummaryWriter(args.log_dir,flush_secs=30)
 
 
