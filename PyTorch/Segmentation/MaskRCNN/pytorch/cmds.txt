@@ -1,0 +1,174 @@
+
+source activate pytorch_latest_p36
+
+pip install git+https://github.com/NVIDIA/dllogger.git
+pip install yacs
+pip install tensorboard
+pip install diffdist
+pip install pycocotools
+
+mkdir ~/github
+cd ~/github
+git clone https://github.com/NVIDIA/apex.git
+cd apex
+python setup.py install --cuda_ext --cpp_ext
+
+cd ~/efs/chengxi/maskrcnn_nvidia/DeepLearningExamples/PyTorch/Segmentation/MaskRCNN/pytorch/
+python3 setup.py build develop
+
+
+
+
+python -u -m torch.distributed.launch  --nproc_per_node=8 tools/train_net.py --config-file configs/nd_baselines/scratch_e2e_mask_rcnn_R_50_FPN_1x_nd_quick_cosine.yaml >nd.quick.scrach.cosine.log
+sudo shutdown
+
+
+
+python -u -m torch.distributed.launch  --nproc_per_node=8 tools/train_net.py --config-file configs/nd_baselines/scratch_e2e_mask_rcnn_R_50_FPN_1x_nd_quick_cosine.1.yaml >nd.quick.scrach.cosine.1.log
+sudo shutdown
+
+
+python -u -m torch.distributed.launch  --nproc_per_node=8 tools/train_net.py --config-file configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd.bs320.1.yaml >nd.bs320.4.log
+sudo shutdown
+
+python -u -m torch.distributed.launch  --nproc_per_node=8 tools/train_net.py --config-file configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd.bs320.yaml >nd.bs320.6.log
+sudo shutdown
+
+
+python -u -m torch.distributed.launch  --nproc_per_node=8 tools/train_net.py --config-file configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd.1.yaml >nd.lr1.log
+sudo shutdown
+
+
+
+python -u -m torch.distributed.launch  --nproc_per_node=8 tools/train_net.py --config-file configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd.bs320.1.yaml >nd.bs320.wd1e-2.log
+sudo shutdown
+
+python -u -m torch.distributed.launch  --nproc_per_node=8 tools/train_net.py --config-file configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd.bs320.2.yaml 1>nd.bs320.wd1e-3.1.log 2>err.log
+sudo shutdown
+
+
+python -u -m torch.distributed.launch  --nproc_per_node=8 tools/train_net.py --config-file configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd.bs320.3.yaml >nd.bs320.wd5e-4.log
+sudo shutdown
+
+
+
+
+python -u -m torch.distributed.launch  --nproc_per_node=8 tools/train_net.py --config-file configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_quick_rfnorm.1.yaml 1>nd.quick.rf.1.log 2>err.log
+sudo shutdown
+
+
+
+python -u -m torch.distributed.launch  --nproc_per_node=8 tools/train_net.py --config-file configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_quick_rfnorm.2.yaml 1>nd.quick.rf.3.log 2>err.log
+sudo shutdown
+
+
+
+
+
+
+NSOCKETS_PER_NODE=2
+NCORES_PER_SOCKET=24
+NPROC_PER_NODE=8
+
+python -u -m bind_launch --nnodes 4 --node_rank 0 --master_addr 172.31.10.110 --master_port 1234  --nsockets_per_node=${NSOCKETS_PER_NODE} \
+                         --ncores_per_socket=${NCORES_PER_SOCKET} --nproc_per_node=${NPROC_PER_NODE} \
+                         tools/train_net.py --config-file ./configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_bs128.1.yaml 1>nd.bs128.1.log 2>err.log
+
+NSOCKETS_PER_NODE=2
+NCORES_PER_SOCKET=24
+NPROC_PER_NODE=8
+python -u -m bind_launch --nnodes 4 --node_rank 1 --master_addr 172.31.10.110 --master_port 1234  --nsockets_per_node=${NSOCKETS_PER_NODE} \
+                         --ncores_per_socket=${NCORES_PER_SOCKET} --nproc_per_node=${NPROC_PER_NODE} \
+                         tools/train_net.py --config-file ./configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_bs128.1.yaml 
+
+
+NSOCKETS_PER_NODE=2
+NCORES_PER_SOCKET=24
+NPROC_PER_NODE=8
+python -u -m bind_launch --nnodes 4 --node_rank 2 --master_addr 172.31.10.110 --master_port 1234  --nsockets_per_node=${NSOCKETS_PER_NODE} \
+                         --ncores_per_socket=${NCORES_PER_SOCKET} --nproc_per_node=${NPROC_PER_NODE} \
+                         tools/train_net.py --config-file ./configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_bs128.1.yaml 
+
+
+
+
+NSOCKETS_PER_NODE=2
+NCORES_PER_SOCKET=24
+NPROC_PER_NODE=8
+python -u -m bind_launch --nnodes 4 --node_rank 3 --master_addr 172.31.10.110 --master_port 1234  --nsockets_per_node=${NSOCKETS_PER_NODE} \
+                         --ncores_per_socket=${NCORES_PER_SOCKET} --nproc_per_node=${NPROC_PER_NODE} \
+                         tools/train_net.py --config-file ./configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_bs128.1.yaml 
+
+
+
+
+
+python -m torch.distributed.launch --nproc_per_node=8 --nnodes=8 --node_rank=0 --master_addr='172.31.10.110' --master_port='18887' ./tools/train_net.py --config-file "./configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_bs256.yaml" 1>nd.256.log 2>err.log
+sudo shutdown
+
+python -m torch.distributed.launch --nproc_per_node=8 --nnodes=8 --node_rank=1 --master_addr='172.31.10.110' --master_port='18887' ./tools/train_net.py --config-file "./configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_bs256.yaml"
+sudo shutdown
+
+python -m torch.distributed.launch --nproc_per_node=8 --nnodes=8 --node_rank=2 --master_addr='172.31.10.110' --master_port='18887' ./tools/train_net.py --config-file "./configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_bs256.yaml"
+sudo shutdown
+
+python -m torch.distributed.launch --nproc_per_node=8 --nnodes=8 --node_rank=3 --master_addr='172.31.10.110' --master_port='18887' ./tools/train_net.py --config-file "./configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_bs256.yaml"
+sudo shutdown
+
+python -m torch.distributed.launch --nproc_per_node=8 --nnodes=8 --node_rank=4 --master_addr='172.31.10.110' --master_port='18887' ./tools/train_net.py --config-file "./configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_bs256.yaml"
+sudo shutdown
+
+python -m torch.distributed.launch --nproc_per_node=8 --nnodes=8 --node_rank=5 --master_addr='172.31.10.110' --master_port='18887' ./tools/train_net.py --config-file "./configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_bs256.yaml"
+sudo shutdown
+
+python -m torch.distributed.launch --nproc_per_node=8 --nnodes=8 --node_rank=6 --master_addr='172.31.10.110' --master_port='18887' ./tools/train_net.py --config-file "./configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_bs256.yaml"
+sudo shutdown
+
+python -m torch.distributed.launch --nproc_per_node=8 --nnodes=8 --node_rank=7 --master_addr='172.31.10.110' --master_port='18887' ./tools/train_net.py --config-file "./configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_bs256.yaml"
+sudo shutdown
+
+
+
+
+
+
+python -u -m torch.distributed.launch  --nproc_per_node=8 tools/train_net.py --config-file configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_quick.yaml
+sudo shutdown
+
+
+
+
+python -u -m torch.distributed.launch  --nproc_per_node=8 tools/train_net.py --config-file configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd.bs320.2.yaml 1>nd.bs320.wd1e-4.1.log 2>err.log
+sudo shutdown
+
+
+
+python -u -m torch.distributed.launch  --nproc_per_node=8 tools/train_net.py --config-file configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_rfnorm.yaml 1>nd.rf.log 2>err.log
+sudo shutdown
+
+
+
+python -u -m torch.distributed.launch  --nproc_per_node=8 tools/train_net.py --config-file configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_rfnorm.1.yaml 1>nd.rf.2.log 2>err.log
+sudo shutdown
+
+
+
+
+python -u -m torch.distributed.launch  --nproc_per_node=8 tools/train_net.py --config-file configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd.2.yaml 1>nd.lr.1.wd5e-4.log 2>err.log
+sudo shutdown
+
+
+
+
+python -m torch.distributed.launch --nproc_per_node=8 --nnodes=4 --node_rank=0 --master_addr='172.31.10.110' --master_port='18887' ./tools/train_net.py --config-file "./configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_bs128.2.yaml" 1>nd.128.nosync.log 2>err.log
+sudo shutdown
+
+python -m torch.distributed.launch --nproc_per_node=8 --nnodes=4 --node_rank=1 --master_addr='172.31.10.110' --master_port='18887' ./tools/train_net.py --config-file "./configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_bs128.2.yaml"
+sudo shutdown
+
+python -m torch.distributed.launch --nproc_per_node=8 --nnodes=4 --node_rank=2 --master_addr='172.31.10.110' --master_port='18887' ./tools/train_net.py --config-file "./configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_bs128.2.yaml"
+sudo shutdown
+
+python -m torch.distributed.launch --nproc_per_node=8 --nnodes=4 --node_rank=3 --master_addr='172.31.10.110' --master_port='18887' ./tools/train_net.py --config-file "./configs/nd_baselines/e2e_mask_rcnn_R_50_FPN_1x_nd_bs128.2.yaml"
+sudo shutdown
+
