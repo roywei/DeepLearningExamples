@@ -454,23 +454,20 @@ class NormalizedDelinear(nn.Module):
         )
 
 
+
 class NormalizedDeconv(conv._ConvNd):
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1,groups=1,bias=True, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,freeze=False,freeze_iter=100,norm_type='none',sync=False,max_channels=4096):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1,groups=1,bias=True, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,freeze=False,freeze_iter=100,norm_type='layernorm',sync=False,rf_size=0.25,rf_eps=1e-2):
   
         self.momentum = momentum
         self.n_iter = n_iter
         self.eps = eps
         self.counter=0
         self.track_running_stats=True
-        self.max_channels=max_channels
         super(NormalizedDeconv, self).__init__(
             in_channels, out_channels,  _pair(kernel_size), _pair(stride), _pair(padding), _pair(dilation),
             False, _pair(0), groups, bias, padding_mode='zeros')
 
-        #no im2col for this many channels to save some gpu ram
-        if in_channels>self.max_channels and self.kernel_size[0]>1:
-            block*=4
 
         if block > in_channels:
             block = in_channels
@@ -484,10 +481,8 @@ class NormalizedDeconv(conv._ConvNd):
 
         self.block=block
 
-        if in_channels<=self.max_channels:#else only channel wise        
-            self.num_features = kernel_size**2 *block
-        else:
-            self.num_features=block
+        self.num_features = kernel_size**2 *block
+
 
         if groups==1:
             self.register_buffer('running_mean', torch.zeros(self.num_features))
@@ -503,6 +498,8 @@ class NormalizedDeconv(conv._ConvNd):
         self.norm_type=norm_type        
         self.sync=sync
         self.process_group=None
+        self.rf_size=rf_size
+        self.rf_eps=rf_eps
         
     def _specify_process_group(self, process_group):
         self.process_group = process_group
@@ -514,59 +511,20 @@ class NormalizedDeconv(conv._ConvNd):
         N, C, H, W = x.shape
         B = self.block
 
-        if self.norm_type=='l1norm':#poor results
-            x_norm=x.abs().mean(dim=(1,2,3),keepdim=True)
+        if self.norm_type=='l1norm':
+            x_norm=x.abs().mean(dim=(1,2,3),keepdim=True)            
             x =  x/ (x_norm + self.eps)
 
-        if self.norm_type=='layernorm':
+        elif self.norm_type=='layernorm':
             #x1=F.layer_norm(x, x.shape[1:], weight=None, bias=None, eps=self.eps)
             x=x.reshape(N,-1)#shit, this is much faster but takes more gpu ram
             mean = x.mean(-1,keepdim=True)
             std = x.std(-1,keepdim=True)
             x = (x - mean) / (std + self.eps)
             x=x.view(N,C,H,W)
-            #print((x1-x).abs().max()) 
-
-        elif self.norm_type=='groupnorm':
-            G=min(16,B)
-            x=x.reshape(N,G,-1)
-            #x=x.view(N,C//G,G,-1).transpose(1,2).reshape(N,G,-1)
-            mean = x.mean(-1,keepdim=True)
-            std = x.std(-1,keepdim=True)
-            x = (x - mean) / (std + self.eps)
-            #x=x.reshape(N,G,C//G,H,W).transpose(1,2)
-            x=x.reshape(N,C,H,W)
+        
         elif self.norm_type=='rfnorm': #receptive field normalization
-            
-            k=self.kernel_size[0]
-            assert k%2==1 #only support odd numbers 
-
-            n=k*k
-            
-            # Build integral image
-            p=k//2
-            xp=F.pad(x,(1+p,p,1+p,p),mode='constant',value=0)
-            x2 = xp **2
-            x_cumsum = xp.cumsum(dim=2).cumsum(dim=3)
-            x2_cumsum = x2.cumsum(dim=2).cumsum(dim=3)
-
-            #box filter results
-            x_mean=x_cumsum[:,:,k:,k:]-x_cumsum[:,:,k:,:-k]-x_cumsum[:,:,:-k,k:]+x_cumsum[:,:,:-k,:-k]
-            x_mean=(x_mean/n).mean(1,keepdim=True)
-            x2_mean=x2_cumsum[:,:,k:,k:]-x2_cumsum[:,:,k:,:-k]-x2_cumsum[:,:,:-k,k:]+x2_cumsum[:,:,:-k,:-k]
-            x2_mean=(x2_mean/n).mean(1,keepdim=True)
-            
-            var =  x2_mean - x_mean**2
-            var = torch.clamp(var,min= 0.)
-    
-            x= (x-x_mean) / (var.sqrt()+self.eps)
-
-            x=x.reshape(N,-1)
-            mean = x.mean(-1,keepdim=True)
-            std = x.std(-1,keepdim=True)
-            x = (x - mean) / (std + self.eps)
-            x=x.view(N,C,H,W)
-
+            x=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=self.sampling_stride)
 
         if self.training:
             self.counter+=1
@@ -575,7 +533,7 @@ class NormalizedDeconv(conv._ConvNd):
         if self.training and (not frozen):
 
             # 1. im2col: N x cols x pixels -> N*pixles x cols
-            if self.kernel_size[0]>1 and C<=self.max_channels:
+            if self.kernel_size[0]>1:
                 X = torch.nn.functional.unfold(x, self.kernel_size,self.dilation,self.padding,self.sampling_stride).transpose(1, 2).contiguous()
             else:
                 #channel wise
@@ -615,13 +573,6 @@ class NormalizedDeconv(conv._ConvNd):
                     X_mean=sync_data[:X_mean.numel()].view(X_mean.shape)
                     XX_mean=sync_data[X_mean.numel():].view(XX_mean.shape)
                     
-                    #sync twice implementation:
-                    #X_mean_list=[torch.empty_like(X_mean) for k in range(world_size)]
-                    #X_mean_list = diffdist.functional.all_gather(X_mean_list, X_mean)
-                    #XX_mean_list=[torch.empty_like(XX_mean) for k in range(world_size)]
-                    #XX_mean_list = diffdist.functional.all_gather(XX_mean_list, XX_mean)
-                    #X_mean=torch.stack(X_mean_list).mean(0)
-                    #XX_mean=torch.stack(XX_mean_list).mean(0)
 
                 if self.groups==1:
                     cov= XX_mean- X_mean.unsqueeze(1) @X_mean.unsqueeze(0)
@@ -669,14 +620,14 @@ class NormalizedDeconv(conv._ConvNd):
 
         w = w.view(self.weight.shape)
         x= F.conv2d(x, w, b, self.stride, self.padding, self.dilation, self.groups)
+        
 
         return x
 
 
-
 class NormalizedDeconvTransposed(conv._ConvTransposeNd):
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1,bias=True, dilation=1, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,norm_type='none',sync=False):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1,bias=True, dilation=1, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,norm_type='layernorm',sync=False,rf_size=0.25,rf_eps=1e-2):
 
 
         self.momentum = momentum
@@ -713,7 +664,9 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
         self.norm_type = norm_type
         self.sync=sync
         self.process_group=None
-
+        self.rf_size=rf_size
+        self.rf_eps=rf_eps
+        
     def _specify_process_group(self, process_group):
         self.process_group = process_group
 
@@ -727,23 +680,17 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
             x_norm=x.abs().mean(dim=(1,2,3),keepdim=True)
             x =  x/ (x_norm + self.eps)
 
-        if self.norm_type=='layernorm':
+
+        elif self.norm_type=='layernorm':
             #x1=F.layer_norm(x, x.shape[1:], weight=None, bias=None, eps=self.eps)
             x=x.reshape(N,-1)#shit, this is much faster but takes more gpu ram
             mean = x.mean(-1,keepdim=True)
             std = x.std(-1,keepdim=True)
             x = (x - mean) / (std + self.eps)
             x=x.view(N,C,H,W)
-            #print((x1-x).abs().max()) 
-        elif self.norm_type=='groupnorm':
-            G=min(16,B)
-            x=x.reshape(N,G,-1)
-            #x=x.view(N,C//G,G,-1).transpose(1,2).reshape(N,G,-1)
-            mean = x.mean(-1,keepdim=True)
-            std = x.std(-1,keepdim=True)
-            x = (x - mean) / (std + self.eps)
-            #x=x.reshape(N,G,C//G,H,W).transpose(1,2)
-            x=x.reshape(N,C,H,W)
+
+        elif self.norm_type=='rfnorm': #receptive field normalization
+            x=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=self.sampling_stride)
 
         if self.training and self.track_running_stats:
             self.counter+=1
@@ -793,14 +740,6 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
                     X_mean=sync_data[:X_mean.numel()].view(X_mean.shape)
                     XX_mean=sync_data[X_mean.numel():].view(XX_mean.shape)
                     
-                    #sync twice implementation:
-                    #X_mean_list=[torch.empty_like(X_mean) for k in range(world_size)]
-                    #X_mean_list = diffdist.functional.all_gather(X_mean_list, X_mean)
-                    #XX_mean_list=[torch.empty_like(XX_mean) for k in range(world_size)]
-                    #XX_mean_list = diffdist.functional.all_gather(XX_mean_list, XX_mean)
-                    #X_mean=torch.stack(X_mean_list).mean(0)
-                    #XX_mean=torch.stack(XX_mean_list).mean(0)
-
 
                 if self.groups==1:
                     cov= XX_mean- X_mean.unsqueeze(1) @X_mean.unsqueeze(0)
@@ -911,3 +850,52 @@ def isqrt_newton_schulz_autograd_batch(A, numIters):
 
     return A_isqrt
 
+
+
+def box_filter(x,k,pad=0):
+    if k%2==0:
+        k=k+1
+    p=k//2
+    xp=F.pad(x,(1+p+pad,pad+p,1+p+pad,pad+p),mode='constant',value=0)
+    
+    x_cumsum = xp.cumsum(dim=2)
+    y=x_cumsum[:,:,k:,:]-x_cumsum[:,:,:-k,:]
+    
+    y_cumsum = y.cumsum(dim=3)
+    z=y_cumsum[:,:,:,k:]-y_cumsum[:,:,:,:-k]
+
+    return z
+
+def ReceptiveFieldNorm(x, win_size, eps=1e-2,subsample=4):
+    _, C, H, W = x.size()
+    win_size=int(min(H,W)*win_size)
+    if min(H,W)>subsample*5 and win_size>subsample*2:
+        xs=F.interpolate(x,scale_factor=1/subsample,mode='nearest')
+        win_size=win_size//subsample
+    else:
+        xs=x
+        win_size=win_size
+
+    _,_,h,w=xs.shape  
+    ones=torch.ones(1,1,h,w,dtype=x.dtype,device=x.device)
+    
+    N=box_filter(ones,win_size)    
+
+    x_mean=box_filter(xs,win_size).mean(dim=1,keepdim=True)/N
+    x2_mean=box_filter(xs*xs,win_size).mean(dim=1,keepdim=True)/N
+    
+
+    var =  x2_mean - x_mean**2+eps
+    std = var.sqrt()
+    
+    a = 1/ std
+    b = -x_mean/ std
+    
+    mean_a=box_filter(a,win_size)/N
+    mean_b=box_filter(b,win_size)/N
+    mean_a=F.interpolate(mean_a,size=(H,W),mode='bilinear')
+    mean_b=F.interpolate(mean_b,size=(H,W),mode='bilinear')
+
+    y=mean_a*x+mean_b
+
+    return y
