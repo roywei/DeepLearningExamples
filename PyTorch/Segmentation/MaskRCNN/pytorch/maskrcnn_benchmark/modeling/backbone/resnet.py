@@ -89,7 +89,7 @@ class ResNet(nn.Module):
         if 'Deconv' in cfg.MODEL.RESNETS.TRANS_FUNC:
             transformation_module=functools.partial(
                     _TRANSFORMATION_MODULES[cfg.MODEL.RESNETS.TRANS_FUNC],
-                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE)
+                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS)
                     
         # Construct the stem module
         self.stem = stem_module(cfg)
@@ -174,7 +174,7 @@ class ResNetHead(nn.Module):
         if 'Deconv' in cfg.MODEL.RESNETS.TRANS_FUNC:
             block_module=functools.partial(
                     _TRANSFORMATION_MODULES[cfg.MODEL.RESNETS.TRANS_FUNC],
-                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE)
+                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS)
 
 
         self.stages = []
@@ -449,7 +449,7 @@ class StemWithDeconv(nn.Module):
         out_channels = cfg.MODEL.RESNETS.STEM_OUT_CHANNELS
         block=cfg.MODEL.DECONV.BLOCK
         self.conv1 = NormalizedDeconv(
-            3, out_channels, kernel_size=7, stride=2, padding=3, bias=True,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.STEM_NORM_TYPE
+            3, out_channels, kernel_size=7, stride=2, padding=3, bias=True,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.STEM_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS
         )            
         for l in [self.conv1,]:
             nn.init.kaiming_uniform_(l.weight, a=1)

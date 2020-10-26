@@ -360,7 +360,7 @@ class NormalizedDelinear(nn.Module):
         if self.norm_type=='l1norm':
             input_norm=input.abs().mean(dim=-1,keepdim=True)
             input =  input/ (input_norm + self.eps)
-        if self.norm_type=='layernorm':
+        if self.norm_type=='layernorm' of self.norm_type=='rfnorm':
             #input=F.layer_norm(input, input.shape[1:], weight=None, bias=None, eps=self.eps)
             mean = input.mean(-1,keepdim=True)#these are way faster
             std = input.std(-1,keepdim=True)

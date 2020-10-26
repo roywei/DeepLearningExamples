@@ -131,7 +131,7 @@ class FPNXconv1fcFeatureExtractor(nn.Module):
                         block=cfg.MODEL.DECONV.BLOCK,
                         sampling_stride=cfg.MODEL.DECONV.STRIDE,
                         sync=cfg.MODEL.DECONV.SYNC,
-                        norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE
+                        norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS
                     )
                 )
                 in_channels = conv_head_dim

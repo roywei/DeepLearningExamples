@@ -45,6 +45,12 @@ MODEL:
     SYNC: True
     #ITER: 5
     STRIDE: 5
+    STEM_NORM_TYPE: 'layernorm'
+    BOTTLENECK_NORM_TYPE: 'layernorm'
+    FPN_NORM_TYPE: 'layernorm'
+    RPN_NORM_TYPE: 'layernorm'
+    BOX_NORM_TYPE: 'layernorm'
+    MASK_NORM_TYPE: 'layernorm'
 DATASETS:
   TRAIN: ("coco_2017_train",)
   TEST: ("coco_2017_val",)

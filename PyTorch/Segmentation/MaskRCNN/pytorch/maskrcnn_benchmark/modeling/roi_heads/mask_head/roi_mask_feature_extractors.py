@@ -51,7 +51,7 @@ class MaskRCNNFPNFeatureExtractor(nn.Module):
         for layer_idx, layer_features in enumerate(layers, 1):
             layer_name = "mask_fcn{}".format(layer_idx)
             module = make_conv3x3(next_feature, layer_features, 
-                dilation=dilation, stride=1, use_gn=use_gn,use_gw=use_gw,use_deconv=use_deconv,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.MASK_NORM_TYPE)
+                dilation=dilation, stride=1, use_gn=use_gn,use_gw=use_gw,use_deconv=use_deconv,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.MASK_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS)
             self.add_module(layer_name, module)
             next_feature = layer_features
             self.blocks.append(layer_name)
