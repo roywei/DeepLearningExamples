@@ -361,10 +361,10 @@ class NormalizedDelinear(nn.Module):
             input_norm=input.abs().mean(dim=-1,keepdim=True)
             input =  input/ (input_norm + self.eps)
         if self.norm_type=='layernorm' or self.norm_type=='rfnorm':
-            #input=F.layer_norm(input, input.shape[1:], weight=None, bias=None, eps=self.eps)
-            mean = input.mean(-1,keepdim=True)#these are way faster
+            mean = input.mean(-1,keepdim=True)
             std = input.std(-1,keepdim=True)
-            input = (input - mean) / (std + self.eps)
+            #input = (input - mean) / (std + self.eps)
+            input = input / (std + self.eps)- mean/ (std + self.eps)# this is way more efficient
         elif self.norm_type=='groupnorm':
             N,C=input.shape
             G=min(16,self.block)
@@ -516,11 +516,11 @@ class NormalizedDeconv(conv._ConvNd):
             x =  x/ (x_norm + self.eps)
 
         elif self.norm_type=='layernorm':
-            #x1=F.layer_norm(x, x.shape[1:], weight=None, bias=None, eps=self.eps)
-            x=x.reshape(N,-1)#shit, this is much faster but takes more gpu ram
+            x=x.reshape(N,-1)
             mean = x.mean(-1,keepdim=True)
             std = x.std(-1,keepdim=True)
-            x = (x - mean) / (std + self.eps)
+            #x = (x - mean) / (std + self.eps)
+            x = x /(std + self.eps)- mean/(std + self.eps)#this is way more efficient
             x=x.view(N,C,H,W)
         
         elif self.norm_type=='rfnorm': #receptive field normalization
@@ -682,11 +682,11 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
 
 
         elif self.norm_type=='layernorm':
-            #x1=F.layer_norm(x, x.shape[1:], weight=None, bias=None, eps=self.eps)
-            x=x.reshape(N,-1)#shit, this is much faster but takes more gpu ram
+            x=x.reshape(N,-1)
             mean = x.mean(-1,keepdim=True)
             std = x.std(-1,keepdim=True)
-            x = (x - mean) / (std + self.eps)
+            #x = (x - mean) / (std + self.eps)
+            x = x /(std + self.eps)- mean/(std + self.eps)#this is way more efficient
             x=x.view(N,C,H,W)
 
         elif self.norm_type=='rfnorm': #receptive field normalization
