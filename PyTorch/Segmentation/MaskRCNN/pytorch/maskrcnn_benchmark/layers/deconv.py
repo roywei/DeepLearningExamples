@@ -516,15 +516,21 @@ class NormalizedDeconv(conv._ConvNd):
             x =  x/ (x_norm + self.eps)
 
         elif self.norm_type=='layernorm':
+            #x1=ReceptiveFieldNorm(x,win_size=1.0,eps=self.eps,subsample=3)
+
             x=x.reshape(N,-1)
             mean = x.mean(-1,keepdim=True)
             std = x.std(-1,keepdim=True)
             #x = (x - mean) / (std + self.eps)
             x = x /(std + self.eps)- mean/(std + self.eps)#this is way more efficient
             x=x.view(N,C,H,W)
+
+            #print((x-x1).abs().mean(),x.shape)
+            #print((x1).std().mean())
+
         
         elif self.norm_type=='rfnorm': #receptive field normalization
-            x=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=self.sampling_stride)
+            x=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=3)
 
         if self.training:
             self.counter+=1
@@ -682,6 +688,8 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
 
 
         elif self.norm_type=='layernorm':
+            #x1=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=self.sampling_stride)
+
             x=x.reshape(N,-1)
             mean = x.mean(-1,keepdim=True)
             std = x.std(-1,keepdim=True)
@@ -690,7 +698,7 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
             x=x.view(N,C,H,W)
 
         elif self.norm_type=='rfnorm': #receptive field normalization
-            x=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=self.sampling_stride)
+            x=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=3)
 
         if self.training and self.track_running_stats:
             self.counter+=1
@@ -868,8 +876,8 @@ def box_filter(x,k,pad=0):
 
 def ReceptiveFieldNorm(x, win_size, eps=1e-2,subsample=4):
     _, C, H, W = x.size()
-    win_size=int(min(H,W)*win_size)
-    if min(H,W)>subsample*5 and win_size>subsample*2:
+    win_size=int(max(H,W)*win_size)
+    if min(H,W)>subsample*10 and win_size>subsample*5:
         xs=F.interpolate(x,scale_factor=1/subsample,mode='nearest')
         win_size=win_size//subsample
     else:
