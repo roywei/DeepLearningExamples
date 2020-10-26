@@ -42,8 +42,8 @@ class FPNPredictor(nn.Module):
         representation_size = cfg.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM
         if cfg.MODEL.ROI_BOX_HEAD.USE_DECONV:
             block=cfg.MODEL.DECONV.BLOCK_FC
-            self.cls_score = NormalizedDelinear(representation_size, num_classes,block=block,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS)
-            self.bbox_pred = NormalizedDelinear(representation_size, num_classes * 4,block=block,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS)
+            self.cls_score = NormalizedDelinear(representation_size, num_classes,block=block,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE)
+            self.bbox_pred = NormalizedDelinear(representation_size, num_classes * 4,block=block,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE)
         else:
             self.cls_score = nn.Linear(representation_size, num_classes)
             self.bbox_pred = nn.Linear(representation_size, num_classes * 4)

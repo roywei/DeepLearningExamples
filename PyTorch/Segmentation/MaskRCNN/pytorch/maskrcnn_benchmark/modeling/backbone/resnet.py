@@ -337,7 +337,7 @@ class BottleneckWithDeconv(nn.Module):
         block,
         sampling_stride,
         sync,
-        norm_type
+        norm_type,rf_size,rf_eps
     ):
         super(BottleneckWithDeconv, self).__init__()
 
@@ -347,7 +347,7 @@ class BottleneckWithDeconv(nn.Module):
             self.downsample = nn.Sequential(
                 NormalizedDeconv(
                     in_channels, out_channels, 
-                    kernel_size=1, stride=down_stride, bias=True,block=block,sampling_stride=sampling_stride,sync=sync,norm_type=norm_type
+                    kernel_size=1, stride=down_stride, bias=True,block=block,sampling_stride=sampling_stride,sync=sync,norm_type=norm_type,rf_size=rf_size,rf_eps=rf_eps
                 ),
             )
             for modules in [self.downsample,]:
@@ -372,7 +372,7 @@ class BottleneckWithDeconv(nn.Module):
             block=block,
             sampling_stride=sampling_stride,
             sync=sync,
-            norm_type=norm_type
+            norm_type=norm_type,rf_size=rf_size,rf_eps=rf_eps
             
         )
 
@@ -390,11 +390,11 @@ class BottleneckWithDeconv(nn.Module):
             block=block,
             sampling_stride=sampling_stride,
             sync=sync,
-            norm_type=norm_type
+            norm_type=norm_type,rf_size=rf_size,rf_eps=rf_eps
         )
 
         self.conv3 = NormalizedDeconv(
-            bottleneck_channels, out_channels, kernel_size=1, bias=True,block=block,sampling_stride=sampling_stride,sync=sync,norm_type=norm_type
+            bottleneck_channels, out_channels, kernel_size=1, bias=True,block=block,sampling_stride=sampling_stride,sync=sync,norm_type=norm_type,rf_size=rf_size,rf_eps=rf_eps
         )
 
         for l in [self.conv1, self.conv2, self.conv3,]:
