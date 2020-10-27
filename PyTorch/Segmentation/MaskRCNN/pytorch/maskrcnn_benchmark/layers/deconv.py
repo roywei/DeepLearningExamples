@@ -865,7 +865,7 @@ def ReceptiveFieldNorm(x, win_size, eps=1e-2,subsample=4):
     _, C, H, W = x.size()
     win_size=int(max(H,W)*win_size)
     if win_size<3:
-        return x
+        return layernorm(x,eps)
 
     #print(win_size,subsample,x.size())
     if min(H,W)>subsample*10 and win_size>subsample*5:
