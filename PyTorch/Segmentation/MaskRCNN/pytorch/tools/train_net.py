@@ -244,6 +244,7 @@ def save_path_formatter(args,cfg):
     args.train_size=cfg.INPUT.MIN_SIZE_TRAIN
     args.wd=cfg.SOLVER.WEIGHT_DECAY
     args.accum_steps=cfg.SOLVER.ACCUMULATE_STEPS
+    args.rf_size=cfg.MODEL.DECONV.RF_SIZE
 
     args.pretrained=False
     if cfg.MODEL.WEIGHT:
@@ -276,10 +277,12 @@ def save_path_formatter(args,cfg):
     key_map['train_size']='size'
     key_map['pretrained']='pretrain'
     key_map['wd']='wd'
-
     #key_map['debug']='debug'
     if cfg.SOLVER.ACCUMULATE_GRAD:
         key_map['accum_steps']='cum'
+
+    if args.norm_type=='rfnorm':
+        key_map['rf_size']='rf_size'
 
 
 

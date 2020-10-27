@@ -357,14 +357,15 @@ class NormalizedDelinear(nn.Module):
     def forward(self, input):
         if input.numel()==0:
             return input
+
+        input=input.contiguous()
+
         if self.norm_type=='l1norm':
             input_norm=input.abs().mean(dim=-1,keepdim=True)
             input =  input/ (input_norm + self.eps)
         if self.norm_type=='layernorm' or self.norm_type=='rfnorm':
-            mean = input.mean(-1,keepdim=True)
-            std = input.std(-1,keepdim=True)
-            #input = (input - mean) / (std + self.eps)
-            input = input / (std + self.eps)- mean/ (std + self.eps)# this is way more efficient
+            input=layernorm(input,self.eps)
+
         elif self.norm_type=='groupnorm':
             N,C=input.shape
             G=min(16,self.block)
@@ -509,6 +510,7 @@ class NormalizedDeconv(conv._ConvNd):
         if x.numel()==0:
             return x
         N, C, H, W = x.shape
+        x=x.contiguous()
         B = self.block
 
         if self.norm_type=='l1norm':
@@ -516,17 +518,8 @@ class NormalizedDeconv(conv._ConvNd):
             x =  x/ (x_norm + self.eps)
 
         elif self.norm_type=='layernorm':
-            #x1=ReceptiveFieldNorm(x,win_size=1.0,eps=self.eps,subsample=3)
 
-            x=x.reshape(N,-1)
-            mean = x.mean(-1,keepdim=True)
-            std = x.std(-1,keepdim=True)
-            #x = (x - mean) / (std + self.eps)
-            x = x /(std + self.eps)- mean/(std + self.eps)#this is way more efficient
-            x=x.view(N,C,H,W)
-
-            #print((x-x1).abs().mean(),x.shape)
-            #print((x1).std().mean())
+            x=layernorm(x,self.eps)
 
         
         elif self.norm_type=='rfnorm': #receptive field normalization
@@ -672,13 +665,14 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
         self.process_group=None
         self.rf_size=rf_size
         self.rf_eps=rf_eps
-        
+
     def _specify_process_group(self, process_group):
         self.process_group = process_group
 
     def forward(self, x,output_size=None):
         if x.numel()==0:
             return x
+        x=x.contiguous()
         N, C, H, W = x.shape
         B = self.block
         
@@ -688,18 +682,11 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
 
 
         elif self.norm_type=='layernorm':
-            #x1=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=self.sampling_stride)
 
-            x=x.reshape(N,-1)
-            mean = x.mean(-1,keepdim=True)
-            std = x.std(-1,keepdim=True)
-            #x = (x - mean) / (std + self.eps)
-            x = x /(std + self.eps)- mean/(std + self.eps)#this is way more efficient
-            x=x.view(N,C,H,W)
+            x=layernorm(x,self.eps)
 
         elif self.norm_type=='rfnorm': #receptive field normalization
-            x=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=3)
-
+            x=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=2)
         if self.training and self.track_running_stats:
             self.counter+=1
 
@@ -860,11 +847,11 @@ def isqrt_newton_schulz_autograd_batch(A, numIters):
 
 
 
-def box_filter(x,k,pad=0):
+def box_filter(x,k):
     if k%2==0:
         k=k+1
     p=k//2
-    xp=F.pad(x,(1+p+pad,pad+p,1+p+pad,pad+p),mode='constant',value=0)
+    xp=F.pad(x,(1+p, p,1+p, p),mode='constant',value=0)
     
     x_cumsum = xp.cumsum(dim=2)
     y=x_cumsum[:,:,k:,:]-x_cumsum[:,:,:-k,:]
@@ -877,23 +864,26 @@ def box_filter(x,k,pad=0):
 def ReceptiveFieldNorm(x, win_size, eps=1e-2,subsample=4):
     _, C, H, W = x.size()
     win_size=int(max(H,W)*win_size)
+    if win_size<3:
+        return x
+
+    #print(win_size,subsample,x.size())
     if min(H,W)>subsample*10 and win_size>subsample*5:
-        xs=F.interpolate(x,scale_factor=1/subsample,mode='nearest')
+        xs=F.interpolate(x,scale_factor=1/subsample,mode='bilinear')
         win_size=win_size//subsample
     else:
         xs=x
         win_size=win_size
 
     _,_,h,w=xs.shape  
+    
     ones=torch.ones(1,1,h,w,dtype=x.dtype,device=x.device)
-    
+
     N=box_filter(ones,win_size)    
-
     x_mean=box_filter(xs,win_size).mean(dim=1,keepdim=True)/N
-    x2_mean=box_filter(xs*xs,win_size).mean(dim=1,keepdim=True)/N
-    
-
-    var =  x2_mean - x_mean**2+eps
+    x2_mean=box_filter(xs.square(),win_size).mean(dim=1,keepdim=True)/N
+        
+    var = torch.clamp(x2_mean - x_mean.square(),min=0.)+eps
     std = var.sqrt()
     
     a = 1/ std
@@ -905,5 +895,17 @@ def ReceptiveFieldNorm(x, win_size, eps=1e-2,subsample=4):
     mean_b=F.interpolate(mean_b,size=(H,W),mode='bilinear')
 
     y=mean_a*x+mean_b
+    #print(x.abs().max(),y.abs().max().item(),y.shape)
 
     return y
+
+
+def layernorm(x,eps):
+    x_shape=x.shape
+    x=x.reshape(x_shape[0],-1)
+    mean = x.mean(-1,keepdim=True)
+    std = x.std(-1,keepdim=True)+ eps
+    #x = (x - mean) / std #disaster
+    x = x /std- mean/std#this is way more efficient
+    x=x.view(x_shape)
+    return x
