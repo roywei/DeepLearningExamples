@@ -861,9 +861,9 @@ def ReceptiveFieldNorm(x, win_size, eps=1e-2,subsample=4):
 
     N=box_filter(ones,win_size)    
     x_mean=box_filter(xs,win_size).mean(dim=1,keepdim=True)/N
-    x2_mean=box_filter(xs.square(),win_size).mean(dim=1,keepdim=True)/N
+    x2_mean=box_filter(xs**2,win_size).mean(dim=1,keepdim=True)/N
         
-    var = torch.clamp(x2_mean - x_mean.square(),min=0.)+eps
+    var = torch.clamp(x2_mean - x_mean**2,min=0.)+eps
     std = var.sqrt()
     
     a = 1/ std
