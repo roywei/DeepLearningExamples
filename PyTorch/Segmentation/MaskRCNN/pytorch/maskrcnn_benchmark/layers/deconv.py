@@ -314,6 +314,7 @@ class Delinear(nn.Module):
 
 
 
+
 class NormalizedDelinear(nn.Module):
     __constants__ = ['bias', 'in_features', 'out_features']
 
@@ -366,17 +367,6 @@ class NormalizedDelinear(nn.Module):
         if self.norm_type=='layernorm' or self.norm_type=='rfnorm':
             input=layernorm(input,self.eps)
 
-        elif self.norm_type=='groupnorm':
-            N,C=input.shape
-            G=min(16,self.block)
-            x=input.reshape(N,G,-1)
-            #x=input.view(N,-1,G).transpose(1,2)
-            mean = x.mean(-1,keepdim=True)
-            std = x.std(-1,keepdim=True)
-            x = (x - mean) / (std + self.eps)
-            #x=x.transpose(1,2)
-            input=x.view(N,C)
-            
             
         if self.training:
             # 1. reshape
@@ -405,14 +395,7 @@ class NormalizedDelinear(nn.Module):
                     sync_data=torch.stack(sync_data_list).mean(0)
                     X_mean=sync_data[:X_mean.numel()].view(X_mean.shape)
                     XX_mean=sync_data[X_mean.numel():].view(XX_mean.shape)
-                    
-                    #sync twice implementation:
-                    #X_mean_list=[torch.empty_like(X_mean) for k in range(world_size)]
-                    #X_mean_list = diffdist.functional.all_gather(X_mean_list, X_mean)
-                    #XX_mean_list=[torch.empty_like(XX_mean) for k in range(world_size)]
-                    #XX_mean_list = diffdist.functional.all_gather(XX_mean_list, XX_mean)
-                    #X_mean=torch.stack(X_mean_list).mean(0)
-                    #XX_mean=torch.stack(XX_mean_list).mean(0)
+
 
                 cov= XX_mean- X_mean.unsqueeze(1) @X_mean.unsqueeze(0)
                 Id = torch.eye(cov.shape[1], dtype=cov.dtype, device=cov.device)
@@ -458,13 +441,12 @@ class NormalizedDelinear(nn.Module):
 
 class NormalizedDeconv(conv._ConvNd):
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1,groups=1,bias=True, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,freeze=False,freeze_iter=100,norm_type='layernorm',sync=False,rf_size=0.25,rf_eps=1e-2):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1,groups=1,bias=True, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,freeze=False,freeze_iter=100,norm_type='none',sync=False,rf_size=0.25,rf_eps=1e-4):
   
         self.momentum = momentum
         self.n_iter = n_iter
         self.eps = eps
         self.counter=0
-        self.track_running_stats=True
         super(NormalizedDeconv, self).__init__(
             in_channels, out_channels,  _pair(kernel_size), _pair(stride), _pair(padding), _pair(dilation),
             False, _pair(0), groups, bias, padding_mode='zeros')
@@ -523,7 +505,7 @@ class NormalizedDeconv(conv._ConvNd):
 
         
         elif self.norm_type=='rfnorm': #receptive field normalization
-            x=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=3)
+            x=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=self.sampling_stride)
 
         if self.training:
             self.counter+=1
@@ -626,14 +608,12 @@ class NormalizedDeconv(conv._ConvNd):
 
 class NormalizedDeconvTransposed(conv._ConvTransposeNd):
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1,bias=True, dilation=1, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,norm_type='layernorm',sync=False,rf_size=0.25,rf_eps=1e-2):
-
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1,bias=True, dilation=1, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,norm_type='none',sync=False,rf_size=0.25,rf_eps=1e-4):
 
         self.momentum = momentum
         self.n_iter = n_iter
         self.eps = eps
         self.counter=0
-        self.track_running_stats=True
         super(NormalizedDeconvTransposed, self).__init__(
             in_channels, out_channels, _pair(kernel_size), _pair(stride), _pair(padding), _pair(dilation),
             True, _pair(output_padding), groups, bias, padding_mode='zeros')
@@ -686,8 +666,8 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
             x=layernorm(x,self.eps)
 
         elif self.norm_type=='rfnorm': #receptive field normalization
-            x=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=2)
-        if self.training and self.track_running_stats:
+            x=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=self.sampling_stride)
+        if self.training:
             self.counter+=1
 
             #1. im2col: N x cols x pixels -> N*pixles x cols
