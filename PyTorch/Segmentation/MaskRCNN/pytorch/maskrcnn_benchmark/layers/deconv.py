@@ -12,6 +12,9 @@ from torch.nn.parameter import Parameter
 from torch.nn import init
 
 import diffdist
+import numpy as np
+
+import cv2
 
 class FastDeconv(conv._ConvNd):
 
@@ -20,7 +23,6 @@ class FastDeconv(conv._ConvNd):
         self.n_iter = n_iter
         self.eps = eps
         self.counter=0
-        self.track_running_stats=True
         super(FastDeconv, self).__init__(
             in_channels, out_channels,  _pair(kernel_size), _pair(stride), _pair(padding), _pair(dilation),
             False, _pair(0), groups, bias, padding_mode='zeros')
@@ -54,7 +56,7 @@ class FastDeconv(conv._ConvNd):
         N, C, H, W = x.shape
         B = self.block
         frozen=self.freeze and (self.counter>self.freeze_iter)
-        if self.training and self.track_running_stats:
+        if self.training:
             self.counter+=1
             self.counter %= (self.freeze_iter * 10)
 
@@ -90,18 +92,17 @@ class FastDeconv(conv._ConvNd):
 
                 deconv = isqrt_newton_schulz_autograd_batch(cov, self.n_iter)
 
-            if self.track_running_stats:
-                self.running_mean.mul_(1 - self.momentum)
-                self.running_mean.add_(X_mean.detach() * self.momentum)
-                # track stats for evaluation
-                self.running_cov_isqrt.mul_(1 - self.momentum)
-                self.running_cov_isqrt.add_(deconv.detach() * self.momentum)
+            self.running_mean.mul_(1 - self.momentum)
+            self.running_mean.add_(X_mean.detach() * self.momentum)
+            self.running_cov_isqrt.mul_(1 - self.momentum)
+            self.running_cov_isqrt.add_(deconv.detach() * self.momentum)
 
         else:
             X_mean = self.running_mean
             deconv = self.running_cov_isqrt
 
         #4. X * deconv * conv = X * (deconv * conv)
+        
         if self.groups==1:
             w = self.weight.view(-1, self.num_features, C // B).transpose(1, 2).contiguous().view(-1,self.num_features) @ deconv
             b = self.bias - (w @ (X_mean.unsqueeze(1))).view(self.weight.shape[0], -1).sum(1)
@@ -126,7 +127,6 @@ class FastDeconvTransposed(conv._ConvTransposeNd):
         self.n_iter = n_iter
         self.eps = eps
         self.counter=0
-        self.track_running_stats=True
         super(FastDeconvTransposed, self).__init__(
             in_channels, out_channels, _pair(kernel_size), _pair(stride), _pair(padding), _pair(dilation),
             True, _pair(output_padding), groups, bias, padding_mode='zeros')
@@ -158,7 +158,7 @@ class FastDeconvTransposed(conv._ConvTransposeNd):
         N, C, H, W = x.shape
         B = self.block
         
-        if self.training and self.track_running_stats:
+        if self.training:
             self.counter+=1
         
         if self.training:
@@ -195,12 +195,11 @@ class FastDeconvTransposed(conv._ConvTransposeNd):
 
                 deconv = isqrt_newton_schulz_autograd_batch(cov, self.n_iter)
 
-            if self.track_running_stats:
-                self.running_mean.mul_(1 - self.momentum)
-                self.running_mean.add_(X_mean.detach() * self.momentum)
-                # track stats for evaluation
-                self.running_cov_isqrt.mul_(1 - self.momentum)
-                self.running_cov_isqrt.add_(deconv.detach() * self.momentum)
+            self.running_mean.mul_(1 - self.momentum)
+            self.running_mean.add_(X_mean.detach() * self.momentum)
+            # track stats for evaluation
+            self.running_cov_isqrt.mul_(1 - self.momentum)
+            self.running_cov_isqrt.add_(deconv.detach() * self.momentum)
 
         else:
             X_mean = self.running_mean
@@ -314,6 +313,7 @@ class Delinear(nn.Module):
 
 
 
+
 class NormalizedDelinear(nn.Module):
     __constants__ = ['bias', 'in_features', 'out_features']
 
@@ -343,7 +343,8 @@ class NormalizedDelinear(nn.Module):
         self.norm_type=norm_type
         self.sync=sync
         self.process_group=None
-
+        if self.norm_type=='layernorm' or self.norm_type=='rfnorm':
+            self.layernorm=LayerNorm(self.eps)
     def _specify_process_group(self, process_group):
         self.process_group = process_group
 
@@ -357,25 +358,15 @@ class NormalizedDelinear(nn.Module):
     def forward(self, input):
         if input.numel()==0:
             return input
+
+        input=input.contiguous()
+
         if self.norm_type=='l1norm':
             input_norm=input.abs().mean(dim=-1,keepdim=True)
             input =  input/ (input_norm + self.eps)
         if self.norm_type=='layernorm' or self.norm_type=='rfnorm':
-            mean = input.mean(-1,keepdim=True)
-            std = input.std(-1,keepdim=True)
-            #input = (input - mean) / (std + self.eps)
-            input = input / (std + self.eps)- mean/ (std + self.eps)# this is way more efficient
-        elif self.norm_type=='groupnorm':
-            N,C=input.shape
-            G=min(16,self.block)
-            x=input.reshape(N,G,-1)
-            #x=input.view(N,-1,G).transpose(1,2)
-            mean = x.mean(-1,keepdim=True)
-            std = x.std(-1,keepdim=True)
-            x = (x - mean) / (std + self.eps)
-            #x=x.transpose(1,2)
-            input=x.view(N,C)
-            
+            input=self.layernorm(input)
+
             
         if self.training:
             # 1. reshape
@@ -404,14 +395,7 @@ class NormalizedDelinear(nn.Module):
                     sync_data=torch.stack(sync_data_list).mean(0)
                     X_mean=sync_data[:X_mean.numel()].view(X_mean.shape)
                     XX_mean=sync_data[X_mean.numel():].view(XX_mean.shape)
-                    
-                    #sync twice implementation:
-                    #X_mean_list=[torch.empty_like(X_mean) for k in range(world_size)]
-                    #X_mean_list = diffdist.functional.all_gather(X_mean_list, X_mean)
-                    #XX_mean_list=[torch.empty_like(XX_mean) for k in range(world_size)]
-                    #XX_mean_list = diffdist.functional.all_gather(XX_mean_list, XX_mean)
-                    #X_mean=torch.stack(X_mean_list).mean(0)
-                    #XX_mean=torch.stack(XX_mean_list).mean(0)
+
 
                 cov= XX_mean- X_mean.unsqueeze(1) @X_mean.unsqueeze(0)
                 Id = torch.eye(cov.shape[1], dtype=cov.dtype, device=cov.device)
@@ -457,13 +441,12 @@ class NormalizedDelinear(nn.Module):
 
 class NormalizedDeconv(conv._ConvNd):
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1,groups=1,bias=True, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,freeze=False,freeze_iter=100,norm_type='layernorm',sync=False,rf_size=0.25,rf_eps=1e-2):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1,groups=1,bias=True, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,freeze=False,freeze_iter=100,norm_type='none',sync=False,rf_size=0.25,rf_eps=1e-4):
   
         self.momentum = momentum
         self.n_iter = n_iter
         self.eps = eps
         self.counter=0
-        self.track_running_stats=True
         super(NormalizedDeconv, self).__init__(
             in_channels, out_channels,  _pair(kernel_size), _pair(stride), _pair(padding), _pair(dilation),
             False, _pair(0), groups, bias, padding_mode='zeros')
@@ -500,7 +483,11 @@ class NormalizedDeconv(conv._ConvNd):
         self.process_group=None
         self.rf_size=rf_size
         self.rf_eps=rf_eps
-        
+        if self.norm_type=='rfnorm':
+            self.rfnorm=ReceptiveFieldNorm(scale=rf_size,eps=rf_eps,subsample=1)
+        if self.norm_type=='layernorm':
+            self.layernorm=LayerNorm(self.eps)
+            
     def _specify_process_group(self, process_group):
         self.process_group = process_group
     
@@ -509,6 +496,7 @@ class NormalizedDeconv(conv._ConvNd):
         if x.numel()==0:
             return x
         N, C, H, W = x.shape
+        x=x.contiguous()
         B = self.block
 
         if self.norm_type=='l1norm':
@@ -516,21 +504,10 @@ class NormalizedDeconv(conv._ConvNd):
             x =  x/ (x_norm + self.eps)
 
         elif self.norm_type=='layernorm':
-            #x1=ReceptiveFieldNorm(x,win_size=1.0,eps=self.eps,subsample=3)
+            x=self.layernorm(x)
 
-            x=x.reshape(N,-1)
-            mean = x.mean(-1,keepdim=True)
-            std = x.std(-1,keepdim=True)
-            #x = (x - mean) / (std + self.eps)
-            x = x /(std + self.eps)- mean/(std + self.eps)#this is way more efficient
-            x=x.view(N,C,H,W)
-
-            #print((x-x1).abs().mean(),x.shape)
-            #print((x1).std().mean())
-
-        
         elif self.norm_type=='rfnorm': #receptive field normalization
-            x=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=3)
+            x=self.rfnorm(x)
 
         if self.training:
             self.counter+=1
@@ -633,14 +610,12 @@ class NormalizedDeconv(conv._ConvNd):
 
 class NormalizedDeconvTransposed(conv._ConvTransposeNd):
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1,bias=True, dilation=1, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,norm_type='layernorm',sync=False,rf_size=0.25,rf_eps=1e-2):
-
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1,bias=True, dilation=1, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,norm_type='none',sync=False,rf_size=0.25,rf_eps=1e-4):
 
         self.momentum = momentum
         self.n_iter = n_iter
         self.eps = eps
         self.counter=0
-        self.track_running_stats=True
         super(NormalizedDeconvTransposed, self).__init__(
             in_channels, out_channels, _pair(kernel_size), _pair(stride), _pair(padding), _pair(dilation),
             True, _pair(output_padding), groups, bias, padding_mode='zeros')
@@ -672,13 +647,18 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
         self.process_group=None
         self.rf_size=rf_size
         self.rf_eps=rf_eps
-        
+        if self.norm_type=='rfnorm':
+            self.rfnorm=ReceptiveFieldNorm(scale=rf_size,eps=rf_eps,subsample=1)
+        if self.norm_type=='layernorm':
+            self.layernorm=LayerNorm(self.eps)
+
     def _specify_process_group(self, process_group):
         self.process_group = process_group
 
     def forward(self, x,output_size=None):
         if x.numel()==0:
             return x
+        x=x.contiguous()
         N, C, H, W = x.shape
         B = self.block
         
@@ -688,19 +668,13 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
 
 
         elif self.norm_type=='layernorm':
-            #x1=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=self.sampling_stride)
 
-            x=x.reshape(N,-1)
-            mean = x.mean(-1,keepdim=True)
-            std = x.std(-1,keepdim=True)
-            #x = (x - mean) / (std + self.eps)
-            x = x /(std + self.eps)- mean/(std + self.eps)#this is way more efficient
-            x=x.view(N,C,H,W)
+            x=self.layernorm(x)
 
         elif self.norm_type=='rfnorm': #receptive field normalization
-            x=ReceptiveFieldNorm(x,win_size=self.rf_size,eps=self.rf_eps,subsample=3)
+            x=self.rfnorm(x)
 
-        if self.training and self.track_running_stats:
+        if self.training:
             self.counter+=1
 
             #1. im2col: N x cols x pixels -> N*pixles x cols
@@ -813,6 +787,7 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
 
 
 
+
 def isqrt_newton_schulz_autograd(A, numIters,norm='norm',method='denman_beavers'):
     dim = A.shape[0]
 
@@ -860,11 +835,14 @@ def isqrt_newton_schulz_autograd_batch(A, numIters):
 
 
 
-def box_filter(x,k,pad=0):
+
+
+
+def box_filter(x,k):
     if k%2==0:
         k=k+1
     p=k//2
-    xp=F.pad(x,(1+p+pad,pad+p,1+p+pad,pad+p),mode='constant',value=0)
+    xp=F.pad(x,(1+p, p,1+p, p),mode='constant',value=0)
     
     x_cumsum = xp.cumsum(dim=2)
     y=x_cumsum[:,:,k:,:]-x_cumsum[:,:,:-k,:]
@@ -874,36 +852,76 @@ def box_filter(x,k,pad=0):
 
     return z
 
-def ReceptiveFieldNorm(x, win_size, eps=1e-2,subsample=4):
-    _, C, H, W = x.size()
-    win_size=int(max(H,W)*win_size)
-    if min(H,W)>subsample*10 and win_size>subsample*5:
-        xs=F.interpolate(x,scale_factor=1/subsample,mode='nearest')
-        win_size=win_size//subsample
-    else:
-        xs=x
-        win_size=win_size
+class ReceptiveFieldNorm(nn.Module):
+    def __init__(self, win_size=None,scale=None, eps=1e-2,subsample=1):
+        super(ReceptiveFieldNorm, self).__init__()
 
-    _,_,h,w=xs.shape  
-    ones=torch.ones(1,1,h,w,dtype=x.dtype,device=x.device)
-    
-    N=box_filter(ones,win_size)    
+        self.win_size=win_size
+        self.eps=eps
+        self.subsample=subsample
+        self.layernorm=LayerNorm(self.eps)
+        self.scale=scale
+    def forward(self, x, win_size=None):
+        _, C, H, W = x.size()
+        if win_size is None:
+            if self.scale is not None:
+                win_size=int(max(H,W)*self.scale)
+            else:
+                win_size=self.win_size
+        if win_size<3 or win_size>=min(H,W):
+            y= self.layernorm(x)
+            return y
+        if self.subsample>1 and min(H,W)>self.subsample*10 and win_size>self.subsample*5:
+            xs=F.interpolate(x,scale_factor=1/self.subsample,mode='bilinear')
+            win_size=win_size//self.subsample
+        else:
+            xs=x
+            win_size=win_size
 
-    x_mean=box_filter(xs,win_size).mean(dim=1,keepdim=True)/N
-    x2_mean=box_filter(xs*xs,win_size).mean(dim=1,keepdim=True)/N
-    
+        _,_,h,w=xs.shape  
 
-    var =  x2_mean - x_mean**2+eps
-    std = var.sqrt()
-    
-    a = 1/ std
-    b = -x_mean/ std
-    
-    mean_a=box_filter(a,win_size)/N
-    mean_b=box_filter(b,win_size)/N
-    mean_a=F.interpolate(mean_a,size=(H,W),mode='bilinear')
-    mean_b=F.interpolate(mean_b,size=(H,W),mode='bilinear')
+        ones=torch.ones(1,1,h,w,dtype=x.dtype,device=x.device)
 
-    y=mean_a*x+mean_b
+        N=box_filter(ones,win_size)    
+        x_mean=box_filter(xs,win_size).mean(dim=1,keepdim=True)/N
+        x2_mean=box_filter(xs**2,win_size).mean(dim=1,keepdim=True)/N
+            
+        var = torch.clamp(x2_mean - x_mean**2,min=0.)+self.eps
+        std = var.sqrt()
 
-    return y
+        a = 1/ std
+        b = -x_mean/ std
+
+        mean_a=box_filter(a,win_size)/N
+        mean_b=box_filter(b,win_size)/N
+
+        if self.subsample>1:
+            mean_a=F.interpolate(mean_a,size=(H,W),mode='bilinear')
+            mean_b=F.interpolate(mean_b,size=(H,W),mode='bilinear')
+
+        y=mean_a*x+mean_b
+
+        return y
+
+class LayerNorm(nn.Module):
+    def __init__(self, eps=1e-4):
+        super(LayerNorm, self).__init__()
+
+        self.eps=eps
+
+    def forward(self,x):
+        x_shape=x.shape
+        x=x.reshape(x_shape[0],-1)
+        mean = x.mean(-1,keepdim=True)
+        std = x.std(-1,keepdim=True)+ self.eps
+        #x = (x - mean) / std #disaster
+        x = x /std- mean/std#this is way more efficient
+        x=x.view(x_shape)
+        return x
+
+
+
+
+if __name__=='__main__':
+
+    pass

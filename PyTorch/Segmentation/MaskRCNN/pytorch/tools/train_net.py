@@ -54,24 +54,24 @@ except ImportError:
 
 def test_and_exchange_map(tester, model, distributed, args):
     results = tester(model=model, distributed=distributed, args=args)
-
     # main process only
     if is_main_process():
         # Note: one indirection due to possibility of multiple test datasets, we only care about the first
         #       tester returns (parsed results, raw results). In our case, don't care about the latter
         map_results, raw_results = results[0]
         bbox_map = map_results.results["bbox"]['AP']
-        segm_map = map_results.results["segm"]['AP']
+        if cfg.MODEL.MASK_ON:
+            segm_map = map_results.results["segm"]['AP'] 
+        else:
+            segm_map = 0.
     else:
         bbox_map = 0.
         segm_map = 0.
-
     if distributed:
         map_tensor = torch.tensor([bbox_map, segm_map], dtype=torch.float32, device=torch.device("cuda"))
         torch.distributed.broadcast(map_tensor, 0)
         bbox_map = map_tensor[0].item()
         segm_map = map_tensor[1].item()
-
     return bbox_map, segm_map
 
 def mlperf_test_early_exit(iteration, iters_per_epoch, tester, model, distributed, min_bbox_map, min_segm_map,args):
