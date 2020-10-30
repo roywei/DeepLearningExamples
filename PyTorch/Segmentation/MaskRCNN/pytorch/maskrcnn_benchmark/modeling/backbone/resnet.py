@@ -23,7 +23,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from maskrcnn_benchmark.layers import FrozenBatchNorm2d
-from maskrcnn_benchmark.layers import Conv2d,NormalizedDeconv,ReceptiveFieldNorm
+from maskrcnn_benchmark.layers import Conv2d,NormalizedDeconv,ReceptiveFieldNorm,LayerNorm
 from maskrcnn_benchmark.modeling.make_layers import group_norm, Whitening_IGWItN
 from maskrcnn_benchmark.utils.registry import Registry
 import functools
@@ -105,6 +105,8 @@ class ResNet(nn.Module):
         if cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE=='rfnorm':
             self.rfnorm=ReceptiveFieldNorm(eps=cfg.MODEL.DECONV.RF_EPS)
             self.rf_scale=cfg.MODEL.DECONV.RF_SIZE
+        elif cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE=='layernorm':
+            self.layernorm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
 
         for stage_spec in stage_specs:
             name = "layer" + str(stage_spec.index)
@@ -151,8 +153,12 @@ class ResNet(nn.Module):
             win_size=int(win_size/(2**(len(self.stages)-1)))
 
         for stage_name in self.stages:
+            if hasattr(self,'rfnorm'):
+                x =self.rfnorm(x,win_size=win_size)
+            elif hasattr(self,'layernorm'):
+                x =self.layernorm(x)
+
             x = getattr(self, stage_name)(x)
-                
 
             if self.return_features[stage_name]:
                 outputs.append(x)
@@ -347,7 +353,7 @@ class BottleneckWithDeconv(nn.Module):
         block,
         sampling_stride,
         sync,
-        norm_type,rf_size,rf_eps
+        norm_type='none',rf_size=1.0,rf_eps=1e-2
     ):
         super(BottleneckWithDeconv, self).__init__()
 
@@ -459,7 +465,7 @@ class StemWithDeconv(nn.Module):
         out_channels = cfg.MODEL.RESNETS.STEM_OUT_CHANNELS
         block=cfg.MODEL.DECONV.BLOCK
         self.conv1 = NormalizedDeconv(
-            3, out_channels, kernel_size=7, stride=2, padding=3, bias=True,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type='none')#cfg.MODEL.DECONV.STEM_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS
+            3, out_channels, kernel_size=7, stride=2, padding=3, bias=True,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type='none'#cfg.MODEL.DECONV.STEM_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS
         )            
         for l in [self.conv1,]:
             nn.init.kaiming_uniform_(l.weight, a=1)
