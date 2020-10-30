@@ -31,7 +31,7 @@ class RPNHead(nn.Module):
             self.bbox_pred = NormalizedDeconv(in_channels, num_anchors * 4, kernel_size=1, stride=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)#,norm_type=cfg.MODEL.DECONV.RPN_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS)
             if cfg.MODEL.DECONV.RPN_NORM_TYPE=='rfnorm':
                 self.rfnorm=ReceptiveFieldNorm(eps=cfg.MODEL.DECONV.RF_EPS)
-                self.rf_scale=rf_size=cfg.MODEL.DECONV.RF_SIZE
+                self.rf_scale=cfg.MODEL.DECONV.RF_SIZE
             elif cfg.MODEL.DECONV.RPN_NORM_TYPE=='layernorm':
                 self.layernorm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
 
