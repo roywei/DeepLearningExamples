@@ -359,7 +359,7 @@ class NormalizedDelinear(nn.Module):
         if input.numel()==0:
             return input
 
-        input=input.contiguous()
+        #input=input.contiguous()
 
         if self.norm_type=='l1norm':
             input_norm=input.abs().mean(dim=-1,keepdim=True)
@@ -496,7 +496,7 @@ class NormalizedDeconv(conv._ConvNd):
         if x.numel()==0:
             return x
         N, C, H, W = x.shape
-        x=x.contiguous()
+        #x=x.contiguous()
         B = self.block
 
         if self.norm_type=='l1norm':
@@ -658,7 +658,7 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
     def forward(self, x,output_size=None):
         if x.numel()==0:
             return x
-        x=x.contiguous()
+        #x=x.contiguous()
         N, C, H, W = x.shape
         B = self.block
         

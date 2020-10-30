@@ -231,10 +231,7 @@ def save_path_formatter(args,cfg):
     args.batch_size=cfg.SOLVER.IMS_PER_BATCH
     args.max_iter=cfg.SOLVER.MAX_ITER
     args.backbone=cfg.MODEL.BACKBONE.CONV_BODY
-    #args.deconv_fpn=cfg.MODEL.FPN.USE_DECONV
-    #args.deconv_rpn=cfg.MODEL.RPN.USE_DECONV
-    #args.deconv_box=cfg.MODEL.ROI_BOX_HEAD.USE_DECONV
-    #args.deconv_mask=cfg.MODEL.ROI_MASK_HEAD.USE_DECONV
+
     args.use_nd=cfg.MODEL.ROI_BOX_HEAD.USE_DECONV
     args.sync=cfg.MODEL.DECONV.SYNC
     args.norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE
@@ -262,10 +259,7 @@ def save_path_formatter(args,cfg):
     key_map['max_iter'] = 'max_iter'
     key_map['lr']=''
     key_map['batch_size']='bs'
-    #key_map['deconv_fpn']='nd_fpn'
-    #key_map['deconv_rpn']='nd_rpn'
-    #key_map['deconv_box']='nd_box'
-    #key_map['deconv_mask']='nd_mask'
+
     key_map['use_nd']='nd'
     key_map['gn_box']='gn'
     key_map['gw_box']='gw'
@@ -281,8 +275,7 @@ def save_path_formatter(args,cfg):
     if cfg.SOLVER.ACCUMULATE_GRAD:
         key_map['accum_steps']='cum'
 
-    if args.norm_type=='rfnorm':
-        key_map['rf_size']='rf_size'
+    key_map['rf_size']='rf_size'
 
 
 

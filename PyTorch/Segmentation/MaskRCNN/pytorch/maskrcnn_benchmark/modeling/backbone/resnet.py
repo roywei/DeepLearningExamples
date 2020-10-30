@@ -23,7 +23,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from maskrcnn_benchmark.layers import FrozenBatchNorm2d
-from maskrcnn_benchmark.layers import Conv2d,NormalizedDeconv
+from maskrcnn_benchmark.layers import Conv2d,NormalizedDeconv,ReceptiveFieldNorm
 from maskrcnn_benchmark.modeling.make_layers import group_norm, Whitening_IGWItN
 from maskrcnn_benchmark.utils.registry import Registry
 import functools
@@ -89,7 +89,7 @@ class ResNet(nn.Module):
         if 'Deconv' in cfg.MODEL.RESNETS.TRANS_FUNC:
             transformation_module=functools.partial(
                     _TRANSFORMATION_MODULES[cfg.MODEL.RESNETS.TRANS_FUNC],
-                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS)
+                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type='none')#cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS)
                     
         # Construct the stem module
         self.stem = stem_module(cfg)
@@ -102,6 +102,10 @@ class ResNet(nn.Module):
         stage2_out_channels = cfg.MODEL.RESNETS.RES2_OUT_CHANNELS
         self.stages = []
         self.return_features = {}
+        if cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE=='rfnorm':
+            self.rfnorm=ReceptiveFieldNorm(eps=cfg.MODEL.DECONV.RF_EPS)
+            self.rf_scale=cfg.MODEL.DECONV.RF_SIZE
+
         for stage_spec in stage_specs:
             name = "layer" + str(stage_spec.index)
             stage2_relative_factor = 2 ** (stage_spec.index - 1)
@@ -141,8 +145,15 @@ class ResNet(nn.Module):
     def forward(self, x):
         outputs = []
         x = self.stem(x)
+
+        if hasattr(self,'rfnorm'):
+            win_size=max(x.shape[-2:])*self.rf_scale
+            win_size=int(win_size/(2**(len(self.stages)-1)))
+
         for stage_name in self.stages:
             x = getattr(self, stage_name)(x)
+                
+
             if self.return_features[stage_name]:
                 outputs.append(x)
         return outputs
@@ -174,8 +185,7 @@ class ResNetHead(nn.Module):
         if 'Deconv' in cfg.MODEL.RESNETS.TRANS_FUNC:
             block_module=functools.partial(
                     _TRANSFORMATION_MODULES[cfg.MODEL.RESNETS.TRANS_FUNC],
-                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS)
-
+                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type='none')#cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS)
 
         self.stages = []
         stride = stride_init
@@ -449,7 +459,7 @@ class StemWithDeconv(nn.Module):
         out_channels = cfg.MODEL.RESNETS.STEM_OUT_CHANNELS
         block=cfg.MODEL.DECONV.BLOCK
         self.conv1 = NormalizedDeconv(
-            3, out_channels, kernel_size=7, stride=2, padding=3, bias=True,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.STEM_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS
+            3, out_channels, kernel_size=7, stride=2, padding=3, bias=True,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type='none')#cfg.MODEL.DECONV.STEM_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS
         )            
         for l in [self.conv1,]:
             nn.init.kaiming_uniform_(l.weight, a=1)
