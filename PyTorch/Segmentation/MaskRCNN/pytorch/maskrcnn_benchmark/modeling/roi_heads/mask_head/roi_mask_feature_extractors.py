@@ -4,7 +4,7 @@ from torch.nn import functional as F
 
 from ..box_head.roi_box_feature_extractors import ResNet50Conv5ROIFeatureExtractor
 from maskrcnn_benchmark.modeling.poolers import Pooler
-from maskrcnn_benchmark.layers import Conv2d
+from maskrcnn_benchmark.layers import Conv2d,LayerNorm,ReceptiveFieldNorm
 from maskrcnn_benchmark.modeling.make_layers import make_conv3x3
 
 
@@ -51,13 +51,22 @@ class MaskRCNNFPNFeatureExtractor(nn.Module):
         for layer_idx, layer_features in enumerate(layers, 1):
             layer_name = "mask_fcn{}".format(layer_idx)
             module = make_conv3x3(next_feature, layer_features, 
-                dilation=dilation, stride=1, use_gn=use_gn,use_gw=use_gw,use_deconv=use_deconv,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.MASK_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS)
+                dilation=dilation, stride=1, use_gn=use_gn,use_gw=use_gw,use_deconv=use_deconv,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
             self.add_module(layer_name, module)
             next_feature = layer_features
             self.blocks.append(layer_name)
 
+
+        if cfg.MODEL.DECONV.MASK_NORM_TYPE=='rfnorm':
+            self.mask_norm=ReceptiveFieldNorm(min_scale=cfg.MODEL.DECONV.MIN_RF_SCALE,eps=cfg.MODEL.DECONV.RF_EPS)
+        elif cfg.MODEL.DECONV.MASK_NORM_TYPE=='layernorm':
+            self.mask_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
+
     def forward(self, x, proposals):
         x = self.pooler(x, proposals)
+
+        if hasattr(self,'mask_norm'):
+            x=self.mask_norm(x)
 
         for layer_name in self.blocks:
             x = F.relu(getattr(self, layer_name)(x))

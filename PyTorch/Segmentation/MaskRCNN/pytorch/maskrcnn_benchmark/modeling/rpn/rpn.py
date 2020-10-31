@@ -26,14 +26,9 @@ class RPNHead(nn.Module):
         """
         super(RPNHead, self).__init__()
         if cfg.MODEL.RPN.USE_DECONV:
-            self.conv = NormalizedDeconv(in_channels, in_channels, kernel_size=3, stride=1, padding=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)#,norm_type=cfg.MODEL.DECONV.RPN_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS)
-            self.cls_logits = NormalizedDeconv(in_channels, num_anchors, kernel_size=1, stride=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)#,norm_type=cfg.MODEL.DECONV.RPN_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS)
-            self.bbox_pred = NormalizedDeconv(in_channels, num_anchors * 4, kernel_size=1, stride=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)#,norm_type=cfg.MODEL.DECONV.RPN_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS)
-            if cfg.MODEL.DECONV.RPN_NORM_TYPE=='rfnorm':
-                self.rfnorm=ReceptiveFieldNorm(eps=cfg.MODEL.DECONV.RF_EPS)
-                self.rf_scale=cfg.MODEL.DECONV.RF_SIZE
-            elif cfg.MODEL.DECONV.RPN_NORM_TYPE=='layernorm':
-                self.layernorm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
+            self.conv = NormalizedDeconv(in_channels, in_channels, kernel_size=3, stride=1, padding=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
+            self.cls_logits = NormalizedDeconv(in_channels, num_anchors, kernel_size=1, stride=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
+            self.bbox_pred = NormalizedDeconv(in_channels, num_anchors * 4, kernel_size=1, stride=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
 
         else:
             self.conv = nn.Conv2d(
@@ -48,15 +43,18 @@ class RPNHead(nn.Module):
             torch.nn.init.normal_(l.weight, std=0.01)
             torch.nn.init.constant_(l.bias, 0)
 
+
+        if cfg.MODEL.DECONV.RPN_NORM_TYPE=='rfnorm':
+            self.rpn_norm=ReceptiveFieldNorm(min_scale=cfg.MODEL.DECONV.MIN_RF_SCALE,eps=cfg.MODEL.DECONV.RF_EPS)
+        elif cfg.MODEL.DECONV.RPN_NORM_TYPE=='layernorm':
+            self.rpn_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
+
+
     def forward(self, x):
         logits = []
         bbox_reg = []
-        if hasattr(self,'rfnorm'):
-            win_size=max(x[0].shape[-2:])*self.rf_scale
-            win_size=int(win_size/(2**(len(x)-1)))
-            x =[self.rfnorm(feature,win_size=win_size) for feature in x]
-        elif hasattr(self,'layernorm'):
-            x =[self.layernorm(feature) for feature in x]
+        if hasattr(self,'rpn_norm'):
+            x =[self.rpn_norm(feature) for feature in x]
 
         for feature in x:
             t = F.relu(self.conv(feature))

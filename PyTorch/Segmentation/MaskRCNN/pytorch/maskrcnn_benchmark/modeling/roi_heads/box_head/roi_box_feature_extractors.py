@@ -8,7 +8,7 @@ from maskrcnn_benchmark.modeling.backbone import resnet
 from maskrcnn_benchmark.modeling.poolers import Pooler
 from maskrcnn_benchmark.modeling.make_layers import group_norm
 from maskrcnn_benchmark.modeling.make_layers import make_fc
-from maskrcnn_benchmark.layers import NormalizedDeconv
+from maskrcnn_benchmark.layers import NormalizedDeconv,LayerNorm,ReceptiveFieldNorm
 
 @registry.ROI_BOX_FEATURE_EXTRACTORS.register("ResNet50Conv5ROIFeatureExtractor")
 class ResNet50Conv5ROIFeatureExtractor(nn.Module):
@@ -39,9 +39,17 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
 
         self.pooler = pooler
         self.head = head
+        if config.MODEL.DECONV.BOX_NORM_TYPE=='rfnorm':
+            self.box_norm=ReceptiveFieldNorm(min_scale=config.MODEL.DECONV.MIN_RF_SCALE,eps=config.MODEL.DECONV.RF_EPS)
+        elif config.MODEL.DECONV.BOX_NORM_TYPE=='layernorm':
+            self.box_norm=LayerNorm(eps=config.MODEL.DECONV.RF_EPS)
 
     def forward(self, x, proposals):
         x = self.pooler(x, proposals)
+
+        if hasattr(self,'box_norm'):
+            x=self.box_norm(x)
+
         x = self.head(x)
         return x
 
@@ -76,12 +84,18 @@ class FPN2MLPFeatureExtractor(nn.Module):
             block=cfg.MODEL.DECONV.BLOCK_FC#check here
         
         self.pooler = pooler
-        self.fc6 = make_fc(input_size, representation_size, use_gn,use_gw,use_delinear,block=block,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE)
-        self.fc7 = make_fc(representation_size, representation_size, use_gn,use_gw,use_delinear,block=block,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE)
+        self.fc6 = make_fc(input_size, representation_size, use_gn,use_gw,use_delinear,block=block,sync=cfg.MODEL.DECONV.SYNC)
+        self.fc7 = make_fc(representation_size, representation_size, use_gn,use_gw,use_delinear,block=block,sync=cfg.MODEL.DECONV.SYNC)
+
+        if cfg.MODEL.DECONV.BOX_NORM_TYPE=='rfnorm' or cfg.MODEL.DECONV.BOX_NORM_TYPE=='layernorm':
+            self.box_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
 
     def forward(self, x, proposals):
         x = self.pooler(x, proposals)
         x = x.view(x.size(0), -1)
+
+        if hasattr(self,'box_norm'):
+            x=self.box_norm(x)
 
         x = F.relu(self.fc6(x))
         x = F.relu(self.fc7(x))
@@ -131,7 +145,6 @@ class FPNXconv1fcFeatureExtractor(nn.Module):
                         block=cfg.MODEL.DECONV.BLOCK,
                         sampling_stride=cfg.MODEL.DECONV.STRIDE,
                         sync=cfg.MODEL.DECONV.SYNC,
-                        norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS
                     )
                 )
                 in_channels = conv_head_dim
@@ -169,10 +182,18 @@ class FPNXconv1fcFeatureExtractor(nn.Module):
         if use_delinear:
             block=cfg.MODEL.DECONV.BLOCK_FC#check here
         
-        self.fc6 = make_fc(input_size, representation_size, use_gn=False,use_gw=False,use_delinear=use_delinear,block=block,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE)
+        self.fc6 = make_fc(input_size, representation_size, use_gn=False,use_gw=False,use_delinear=use_delinear,block=block,sync=cfg.MODEL.DECONV.SYNC)
+
+        if cfg.MODEL.DECONV.BOX_NORM_TYPE=='rfnorm':
+            self.box_norm=ReceptiveFieldNorm(min_scale=cfg.MODEL.DECONV.MIN_RF_SCALE,eps=cfg.MODEL.DECONV.RF_EPS)
+        elif cfg.MODEL.DECONV.BOX_NORM_TYPE=='layernorm':
+            self.box_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
 
     def forward(self, x, proposals):
         x = self.pooler(x, proposals)
+
+        if hasattr(self,'box_norm'):
+            x=self.box_norm(x)
         x = self.xconvs(x)
         x = x.view(x.size(0), -1)
         x = F.relu(self.fc6(x))

@@ -836,8 +836,6 @@ def isqrt_newton_schulz_autograd_batch(A, numIters):
 
 
 
-
-
 def box_filter(x,k):
     if k%2==0:
         k=k+1
@@ -853,55 +851,76 @@ def box_filter(x,k):
     return z
 
 class ReceptiveFieldNorm(nn.Module):
-    def __init__(self, win_size=None,scale=None, eps=1e-2,subsample=1):
+    def __init__(self, min_scale=1/32, eps=1e-3,rate=4,subsample=3,coarse_to_fine=True):
         super(ReceptiveFieldNorm, self).__init__()
-
-        self.win_size=win_size
         self.eps=eps
         self.subsample=subsample
         self.layernorm=LayerNorm(self.eps)
-        self.scale=scale
+        self.min_scale=min_scale
+        self.rate=rate
+        self.coarse_to_fine=coarse_to_fine
     def forward(self, x, win_size=None):
         _, C, H, W = x.size()
-        if win_size is None:
-            if self.scale is not None:
-                win_size=int(max(H,W)*self.scale)
-            else:
-                win_size=self.win_size
-        if win_size<3 or win_size>=min(H,W):
-            y= self.layernorm(x)
-            return y
-        if self.subsample>1 and min(H,W)>self.subsample*10 and win_size>self.subsample*5:
-            xs=F.interpolate(x,scale_factor=1/self.subsample,mode='bilinear')
-            win_size=win_size//self.subsample
+        if self.coarse_to_fine:
+            scale=1.0
         else:
-            xs=x
-            win_size=win_size
+            scale=self.min_scale
 
-        _,_,h,w=xs.shape  
+        while True:
+            win_size=int(max(H,W)*scale)
+            if win_size<3 or win_size>=min(H,W):
+                x= self.layernorm(x)
 
-        ones=torch.ones(1,1,h,w,dtype=x.dtype,device=x.device)
+                if self.coarse_to_fine:
+                    scale/=self.rate
+                    if scale<self.min_scale:
+                        break
+                else:
+                    scale*=self.rate
+                    if scale>1.0:
+                        break
 
-        N=box_filter(ones,win_size)    
-        x_mean=box_filter(xs,win_size).mean(dim=1,keepdim=True)/N
-        x2_mean=box_filter(xs**2,win_size).mean(dim=1,keepdim=True)/N
-            
-        var = torch.clamp(x2_mean - x_mean**2,min=0.)+self.eps
-        std = var.sqrt()
+                continue
+            if self.subsample>1 and min(H,W)>self.subsample*10 and win_size>self.subsample*5:
+                xs=F.interpolate(x,scale_factor=1/self.subsample,mode='bilinear')
+                win_size=win_size//self.subsample
+            else:
+                xs=x
+                win_size=win_size
 
-        a = 1/ std
-        b = -x_mean/ std
+            _,_,h,w=xs.shape  
 
-        mean_a=box_filter(a,win_size)/N
-        mean_b=box_filter(b,win_size)/N
+            ones=torch.ones(1,1,h,w,dtype=x.dtype,device=x.device)
 
-        if self.subsample>1:
-            mean_a=F.interpolate(mean_a,size=(H,W),mode='bilinear')
-            mean_b=F.interpolate(mean_b,size=(H,W),mode='bilinear')
+            N=box_filter(ones,win_size)    
+            x_mean=box_filter(xs,win_size).mean(dim=1,keepdim=True)/N
+            x2_mean=box_filter(xs**2,win_size).mean(dim=1,keepdim=True)/N
+                
+            var = torch.clamp(x2_mean - x_mean**2,min=0.)+self.eps
+            std = var.sqrt()
 
-        y=mean_a*x+mean_b
+            a = 1/ std
+            b = -x_mean/ std
 
-        return y
+            mean_a=box_filter(a,win_size)/N
+            mean_b=box_filter(b,win_size)/N
+
+            if self.subsample>1:
+                mean_a=F.interpolate(mean_a,size=(H,W),mode='bilinear')
+                mean_b=F.interpolate(mean_b,size=(H,W),mode='bilinear')
+
+            x=mean_a*x+mean_b
+            #return x
+            if self.coarse_to_fine:
+                scale/=self.rate
+                if scale<self.min_scale:
+                    break
+            else:
+                scale*=self.rate
+                if scale>1.0:
+                    break
+
+        return x
 
 class LayerNorm(nn.Module):
     def __init__(self, eps=1e-4):
@@ -921,7 +940,29 @@ class LayerNorm(nn.Module):
 
 
 
+    
 
 if __name__=='__main__':
 
-    pass
+    img = cv2.imread('horse.jpg', cv2.IMREAD_COLOR)    #cv2.IMREAD_GRAYSCALE
+    #img = cv2.imread('Lenna.png', cv2.IMREAD_COLOR)    #cv2.IMREAD_GRAYSCALE
+
+    x=torch.from_numpy(img).unsqueeze(0).permute(0,3,1,2).float()/255
+
+    Im = x.permute(2, 3, 1, 0).squeeze(3).data.cpu().numpy()
+    Im = (Im - Im.min()) / (Im.max() - Im.min()) * 255
+    cv2.imwrite('Im0.jpg', Im)
+
+    eps=1e-4
+    min_scale=1/32
+    subsample=1
+    coarse_to_fine=False
+    rate=3
+
+    rfnorm=ReceptiveFieldNorm(min_scale=min_scale, eps=eps,subsample=subsample,rate=rate,coarse_to_fine=coarse_to_fine)
+    y=rfnorm(x)
+    print(x.mean(),x.std(),y.mean(),y.std())
+    Im=y.permute(2,3,1,0).squeeze(3).data.cpu().numpy()
+    Im = (Im - Im.min()) / (Im.max() - Im.min()) * 255
+    cv2.imwrite('Im_rfnorm.jpg', Im)
+    

@@ -1,6 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 from torch import nn
-from maskrcnn_benchmark.layers import NormalizedDelinear
+from maskrcnn_benchmark.layers import NormalizedDelinear,LayerNorm,ReceptiveFieldNorm
 
 class FastRCNNPredictor(nn.Module):
     def __init__(self, config, pretrained=None):
@@ -15,8 +15,8 @@ class FastRCNNPredictor(nn.Module):
         self.avgpool = nn.AvgPool2d(kernel_size=7, stride=7)
         if config.MODEL.ROI_BOX_HEAD.USE_DECONV:
             block=config.MODEL.DECONV.BLOCK_FC
-            self.cls_score = NormalizedDelinear(num_inputs, num_classes, block=block,sync=config.MODEL.DECONV.SYNC,norm_type=config.MODEL.DECONV.BOX_NORM_TYPE)
-            self.bbox_pred = NormalizedDelinear(num_inputs, num_classes * 4, block=block,sync=config.MODEL.DECONV.SYNC,norm_type=config.MODEL.DECONV.BOX_NORM_TYPE)
+            self.cls_score = NormalizedDelinear(num_inputs, num_classes, block=block,sync=config.MODEL.DECONV.SYNC)
+            self.bbox_pred = NormalizedDelinear(num_inputs, num_classes * 4, block=block,sync=config.MODEL.DECONV.SYNC)
         else:
             self.cls_score = nn.Linear(num_inputs, num_classes)
             self.bbox_pred = nn.Linear(num_inputs, num_classes * 4)
@@ -26,10 +26,16 @@ class FastRCNNPredictor(nn.Module):
 
         nn.init.normal_(self.bbox_pred.weight, mean=0, std=0.001)
         nn.init.constant_(self.bbox_pred.bias, 0)
+        if config.MODEL.DECONV.BOX_NORM_TYPE=='rfnorm' or config.MODEL.DECONV.BOX_NORM_TYPE=='layernorm':
+            self.box_norm=LayerNorm(eps=config.MODEL.DECONV.RF_EPS)
 
     def forward(self, x):
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
+
+        if hasattr(self,'box_norm'):
+            x=self.box_norm(x)
+
         cls_logit = self.cls_score(x)
         bbox_pred = self.bbox_pred(x)
         return cls_logit, bbox_pred
@@ -42,8 +48,8 @@ class FPNPredictor(nn.Module):
         representation_size = cfg.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM
         if cfg.MODEL.ROI_BOX_HEAD.USE_DECONV:
             block=cfg.MODEL.DECONV.BLOCK_FC
-            self.cls_score = NormalizedDelinear(representation_size, num_classes,block=block,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE)
-            self.bbox_pred = NormalizedDelinear(representation_size, num_classes * 4,block=block,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE)
+            self.cls_score = NormalizedDelinear(representation_size, num_classes,block=block,sync=cfg.MODEL.DECONV.SYNC)
+            self.bbox_pred = NormalizedDelinear(representation_size, num_classes * 4,block=block,sync=cfg.MODEL.DECONV.SYNC)
         else:
             self.cls_score = nn.Linear(representation_size, num_classes)
             self.bbox_pred = nn.Linear(representation_size, num_classes * 4)
@@ -52,8 +58,11 @@ class FPNPredictor(nn.Module):
         nn.init.normal_(self.bbox_pred.weight, std=0.001)
         for l in [self.cls_score, self.bbox_pred]:
             nn.init.constant_(l.bias, 0)
-
+        if cfg.MODEL.DECONV.BOX_NORM_TYPE=='rfnorm' or cfg.MODEL.DECONV.BOX_NORM_TYPE=='layernorm':
+            self.box_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
     def forward(self, x):
+        if hasattr(self,'box_norm'):
+            x=self.box_norm(x)
         scores = self.cls_score(x)
         bbox_deltas = self.bbox_pred(x)
 

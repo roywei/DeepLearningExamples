@@ -89,7 +89,7 @@ class ResNet(nn.Module):
         if 'Deconv' in cfg.MODEL.RESNETS.TRANS_FUNC:
             transformation_module=functools.partial(
                     _TRANSFORMATION_MODULES[cfg.MODEL.RESNETS.TRANS_FUNC],
-                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type='none')#cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS)
+                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
                     
         # Construct the stem module
         self.stem = stem_module(cfg)
@@ -102,12 +102,7 @@ class ResNet(nn.Module):
         stage2_out_channels = cfg.MODEL.RESNETS.RES2_OUT_CHANNELS
         self.stages = []
         self.return_features = {}
-        if cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE=='rfnorm':
-            self.rfnorm=ReceptiveFieldNorm(eps=cfg.MODEL.DECONV.RF_EPS)
-            self.rf_scale=cfg.MODEL.DECONV.RF_SIZE
-        elif cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE=='layernorm':
-            self.layernorm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
-
+       
         for stage_spec in stage_specs:
             name = "layer" + str(stage_spec.index)
             stage2_relative_factor = 2 ** (stage_spec.index - 1)
@@ -133,6 +128,21 @@ class ResNet(nn.Module):
         # Optionally freeze (requires_grad=False) parts of the backbone
         self._freeze_backbone(cfg.MODEL.BACKBONE.FREEZE_CONV_BODY_AT)
 
+
+        if cfg.MODEL.DECONV.STEM_NORM_TYPE=='rfnorm':
+            self.stem_norm=ReceptiveFieldNorm(min_scale=cfg.MODEL.DECONV.MIN_RF_SCALE,eps=cfg.MODEL.DECONV.RF_EPS)
+        elif cfg.MODEL.DECONV.STEM_NORM_TYPE=='layernorm':
+            self.stem_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
+        if cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE=='rfnorm':
+            self.bottleneck_norm=ReceptiveFieldNorm(min_scale=cfg.MODEL.DECONV.MIN_RF_SCALE,eps=cfg.MODEL.DECONV.RF_EPS)
+        elif cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE=='layernorm':
+            self.bottleneck_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
+        if cfg.MODEL.DECONV.FPN_NORM_TYPE=='rfnorm':
+            self.fpn_norm=ReceptiveFieldNorm(min_scale=cfg.MODEL.DECONV.MIN_RF_SCALE,eps=cfg.MODEL.DECONV.RF_EPS)
+        elif cfg.MODEL.DECONV.FPN_NORM_TYPE=='layernorm':
+            self.fpn_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
+
+
     def _freeze_backbone(self, freeze_at):
         if freeze_at < 0:
             return
@@ -146,21 +156,22 @@ class ResNet(nn.Module):
 
     def forward(self, x):
         outputs = []
+
+        if hasattr(self,'stem_norm'):
+            x=self.stem_norm(x)
+
         x = self.stem(x)
 
-        if hasattr(self,'rfnorm'):
-            win_size=max(x.shape[-2:])*self.rf_scale
-            win_size=int(win_size/(2**(len(self.stages)-1)))
-
         for stage_name in self.stages:
-            if hasattr(self,'rfnorm'):
-                x =self.rfnorm(x,win_size=win_size)
-            elif hasattr(self,'layernorm'):
-                x =self.layernorm(x)
+
+            if hasattr(self,'bottleneck_norm'):
+                x =self.bottleneck_norm(x)
 
             x = getattr(self, stage_name)(x)
 
             if self.return_features[stage_name]:
+                if hasattr(self,'fpn_norm'):
+                    x =self.fpn_norm(x)
                 outputs.append(x)
         return outputs
 
@@ -191,7 +202,7 @@ class ResNetHead(nn.Module):
         if 'Deconv' in cfg.MODEL.RESNETS.TRANS_FUNC:
             block_module=functools.partial(
                     _TRANSFORMATION_MODULES[cfg.MODEL.RESNETS.TRANS_FUNC],
-                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type='none')#cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS)
+                    block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
 
         self.stages = []
         stride = stride_init
@@ -353,7 +364,6 @@ class BottleneckWithDeconv(nn.Module):
         block,
         sampling_stride,
         sync,
-        norm_type='none',rf_size=1.0,rf_eps=1e-2
     ):
         super(BottleneckWithDeconv, self).__init__()
 
@@ -363,7 +373,7 @@ class BottleneckWithDeconv(nn.Module):
             self.downsample = nn.Sequential(
                 NormalizedDeconv(
                     in_channels, out_channels, 
-                    kernel_size=1, stride=down_stride, bias=True,block=block,sampling_stride=sampling_stride,sync=sync,norm_type=norm_type,rf_size=rf_size,rf_eps=rf_eps
+                    kernel_size=1, stride=down_stride, bias=True,block=block,sampling_stride=sampling_stride,sync=sync
                 ),
             )
             for modules in [self.downsample,]:
@@ -387,9 +397,7 @@ class BottleneckWithDeconv(nn.Module):
             bias=True,
             block=block,
             sampling_stride=sampling_stride,
-            sync=sync,
-            norm_type=norm_type,rf_size=rf_size,rf_eps=rf_eps
-            
+            sync=sync,            
         )
 
         # TODO: specify init for the above
@@ -406,11 +414,10 @@ class BottleneckWithDeconv(nn.Module):
             block=block,
             sampling_stride=sampling_stride,
             sync=sync,
-            norm_type=norm_type,rf_size=rf_size,rf_eps=rf_eps
         )
 
         self.conv3 = NormalizedDeconv(
-            bottleneck_channels, out_channels, kernel_size=1, bias=True,block=block,sampling_stride=sampling_stride,sync=sync,norm_type=norm_type,rf_size=rf_size,rf_eps=rf_eps
+            bottleneck_channels, out_channels, kernel_size=1, bias=True,block=block,sampling_stride=sampling_stride,sync=sync
         )
 
         for l in [self.conv1, self.conv2, self.conv3,]:
@@ -465,7 +472,7 @@ class StemWithDeconv(nn.Module):
         out_channels = cfg.MODEL.RESNETS.STEM_OUT_CHANNELS
         block=cfg.MODEL.DECONV.BLOCK
         self.conv1 = NormalizedDeconv(
-            3, out_channels, kernel_size=7, stride=2, padding=3, bias=True,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type='none'#cfg.MODEL.DECONV.STEM_NORM_TYPE,rf_size=cfg.MODEL.DECONV.RF_SIZE,rf_eps=cfg.MODEL.DECONV.RF_EPS
+            3, out_channels, kernel_size=7, stride=2, padding=3, bias=True,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC
         )            
         for l in [self.conv1,]:
             nn.init.kaiming_uniform_(l.weight, a=1)

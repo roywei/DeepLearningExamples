@@ -234,14 +234,17 @@ def save_path_formatter(args,cfg):
 
     args.use_nd=cfg.MODEL.ROI_BOX_HEAD.USE_DECONV
     args.sync=cfg.MODEL.DECONV.SYNC
-    args.norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE
+    if cfg.MODEL.DECONV.RPN_NORM_TYPE!='none':
+        args.norm_type=cfg.MODEL.DECONV.RPN_NORM_TYPE
+    else:
+        args.norm_type=cfg.MODEL.DECONV.BOX_NORM_TYPE
     args.sampling_stride=cfg.MODEL.DECONV.STRIDE
     args.gn_box=cfg.MODEL.ROI_BOX_HEAD.USE_GN
     args.gw_box=cfg.MODEL.ROI_BOX_HEAD.USE_GW
     args.train_size=cfg.INPUT.MIN_SIZE_TRAIN
     args.wd=cfg.SOLVER.WEIGHT_DECAY
     args.accum_steps=cfg.SOLVER.ACCUMULATE_STEPS
-    args.rf_size=cfg.MODEL.DECONV.RF_SIZE
+    args.min_rf_scale=cfg.MODEL.DECONV.MIN_RF_SCALE
 
     args.pretrained=False
     if cfg.MODEL.WEIGHT:
@@ -275,7 +278,7 @@ def save_path_formatter(args,cfg):
     if cfg.SOLVER.ACCUMULATE_GRAD:
         key_map['accum_steps']='cum'
 
-    key_map['rf_size']='rf_size'
+    key_map['min_rf_scale']='rf'
 
 
 
