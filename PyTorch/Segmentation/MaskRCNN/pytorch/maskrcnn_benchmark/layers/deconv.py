@@ -484,7 +484,7 @@ class NormalizedDeconv(conv._ConvNd):
         self.rf_size=rf_size
         self.rf_eps=rf_eps
         if self.norm_type=='rfnorm':
-            self.rfnorm=ReceptiveFieldNorm(scale=rf_size,eps=rf_eps,subsample=1)
+            self.rfnorm=ReceptiveFieldNorm(min_scale=rf_size,eps=rf_eps,subsample=1)
         if self.norm_type=='layernorm':
             self.layernorm=LayerNorm(self.eps)
             
@@ -648,7 +648,7 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
         self.rf_size=rf_size
         self.rf_eps=rf_eps
         if self.norm_type=='rfnorm':
-            self.rfnorm=ReceptiveFieldNorm(scale=rf_size,eps=rf_eps,subsample=1)
+            self.rfnorm=ReceptiveFieldNorm(min_scale=rf_size,eps=rf_eps,subsample=1)
         if self.norm_type=='layernorm':
             self.layernorm=LayerNorm(self.eps)
 
@@ -862,7 +862,7 @@ class ReceptiveFieldNorm(nn.Module):
     def forward(self, x, win_size=None):
         _, C, H, W = x.size()
         if self.coarse_to_fine:
-            scale=1.0
+            scale=1.0/self.rate
         else:
             scale=self.min_scale
 
@@ -871,53 +871,44 @@ class ReceptiveFieldNorm(nn.Module):
             if win_size<3 or win_size>=min(H,W):
                 x= self.layernorm(x)
 
-                if self.coarse_to_fine:
-                    scale/=self.rate
-                    if scale<self.min_scale:
-                        break
-                else:
-                    scale*=self.rate
-                    if scale>1.0:
-                        break
-
-                continue
-            if self.subsample>1 and min(H,W)>self.subsample*10 and win_size>self.subsample*5:
-                xs=F.interpolate(x,scale_factor=1/self.subsample,mode='bilinear')
-                win_size=win_size//self.subsample
             else:
-                xs=x
-                win_size=win_size
+                if self.subsample>1 and min(H,W)>self.subsample*10 and win_size>self.subsample*5:
+                    xs=F.interpolate(x,scale_factor=1/self.subsample,mode='bilinear')
+                    win_size=win_size//self.subsample
+                else:
+                    xs=x
+                    win_size=win_size
 
-            _,_,h,w=xs.shape  
+                _,_,h,w=xs.shape  
 
-            ones=torch.ones(1,1,h,w,dtype=x.dtype,device=x.device)
+                ones=torch.ones(1,1,h,w,dtype=x.dtype,device=x.device)
 
-            N=box_filter(ones,win_size)    
-            x_mean=box_filter(xs,win_size).mean(dim=1,keepdim=True)/N
-            x2_mean=box_filter(xs**2,win_size).mean(dim=1,keepdim=True)/N
-                
-            var = torch.clamp(x2_mean - x_mean**2,min=0.)+self.eps
-            std = var.sqrt()
+                N=box_filter(ones,win_size)    
+                x_mean=box_filter(xs,win_size).mean(dim=1,keepdim=True)/N
+                x2_mean=box_filter(xs**2,win_size).mean(dim=1,keepdim=True)/N
+                    
+                var = torch.clamp(x2_mean - x_mean**2,min=0.)+self.eps
+                std = var.sqrt()
 
-            a = 1/ std
-            b = -x_mean/ std
+                a = 1/ std
+                b = -x_mean/ std
 
-            mean_a=box_filter(a,win_size)/N
-            mean_b=box_filter(b,win_size)/N
+                mean_a=box_filter(a,win_size)/N
+                mean_b=box_filter(b,win_size)/N
 
-            if self.subsample>1:
-                mean_a=F.interpolate(mean_a,size=(H,W),mode='bilinear')
-                mean_b=F.interpolate(mean_b,size=(H,W),mode='bilinear')
+                if self.subsample>1:
+                    mean_a=F.interpolate(mean_a,size=(H,W),mode='bilinear')
+                    mean_b=F.interpolate(mean_b,size=(H,W),mode='bilinear')
 
-            x=mean_a*x+mean_b
-            #return x
+                x=mean_a*x+mean_b
+
             if self.coarse_to_fine:
                 scale/=self.rate
                 if scale<self.min_scale:
                     break
             else:
                 scale*=self.rate
-                if scale>1.0:
+                if scale>.99:
                     break
 
         return x
