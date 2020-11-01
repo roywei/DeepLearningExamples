@@ -48,19 +48,26 @@ class MaskRCNNFPNFeatureExtractor(nn.Module):
         
         next_feature = input_size
         self.blocks = []
+
+        if cfg.MODEL.DECONV.LAYERWISE_NORM:
+            norm_type=cfg.MODEL.DECONV.MASK_NORM_TYPE
+        else:
+            norm_type='none'
+            if cfg.MODEL.DECONV.MASK_NORM_TYPE=='rfnorm':
+                self.mask_norm=ReceptiveFieldNorm(min_scale=cfg.MODEL.DECONV.MIN_RF_SCALE,eps=cfg.MODEL.DECONV.RF_EPS)
+            elif cfg.MODEL.DECONV.MASK_NORM_TYPE=='layernorm':
+                self.mask_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
+
         for layer_idx, layer_features in enumerate(layers, 1):
             layer_name = "mask_fcn{}".format(layer_idx)
             module = make_conv3x3(next_feature, layer_features, 
-                dilation=dilation, stride=1, use_gn=use_gn,use_gw=use_gw,use_deconv=use_deconv,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
+                dilation=dilation, stride=1, use_gn=use_gn,use_gw=use_gw,use_deconv=use_deconv,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=norm_type)
             self.add_module(layer_name, module)
             next_feature = layer_features
             self.blocks.append(layer_name)
 
 
-        if cfg.MODEL.DECONV.MASK_NORM_TYPE=='rfnorm':
-            self.mask_norm=ReceptiveFieldNorm(min_scale=cfg.MODEL.DECONV.MIN_RF_SCALE,eps=cfg.MODEL.DECONV.RF_EPS)
-        elif cfg.MODEL.DECONV.MASK_NORM_TYPE=='layernorm':
-            self.mask_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
+
 
     def forward(self, x, proposals):
         x = self.pooler(x, proposals)

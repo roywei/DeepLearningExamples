@@ -67,7 +67,7 @@ def make_conv3x3(
     use_gw=False,
     use_relu=False,
     kaiming_init=True,
-    use_deconv=False,block=64,sampling_stride=3,sync=False,
+    use_deconv=False,block=64,sampling_stride=3,sync=False,norm_type='none'
 ):
     if use_deconv:
         conv = NormalizedDeconv(
@@ -81,6 +81,7 @@ def make_conv3x3(
             block=block,
             sampling_stride=sampling_stride,
             sync=sync,
+            norm_type=norm_type,
         )
     else:
         conv = Conv2d(
@@ -113,7 +114,7 @@ def make_conv3x3(
     return conv
 
 
-def make_fc(dim_in, hidden_dim, use_gn=False,use_gw=False,use_delinear=False,block=256,sync=False):
+def make_fc(dim_in, hidden_dim, use_gn=False,use_gw=False,use_delinear=False,block=256,sync=False,norm_type='none'):
     '''
         Caffe2 implementation uses XavierFill, which in fact
         corresponds to kaiming_uniform_ in PyTorch
@@ -127,7 +128,7 @@ def make_fc(dim_in, hidden_dim, use_gn=False,use_gw=False,use_delinear=False,blo
             return nn.Sequential(fc, Whitening_IGWItN(hidden_dim, dim=2)) # use fully coonected- Itn
 
     if use_delinear:
-        fc = NormalizedDelinear(dim_in, hidden_dim,block=block,sync=sync)
+        fc = NormalizedDelinear(dim_in, hidden_dim,block=block,sync=sync,norm_type=norm_type)
     else:
         fc = nn.Linear(dim_in, hidden_dim)
     nn.init.kaiming_uniform_(fc.weight, a=1)

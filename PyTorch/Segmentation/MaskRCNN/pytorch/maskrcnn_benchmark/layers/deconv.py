@@ -343,6 +343,8 @@ class NormalizedDelinear(nn.Module):
         self.norm_type=norm_type
         self.sync=sync
         self.process_group=None
+
+
         if self.norm_type=='layernorm' or self.norm_type=='rfnorm':
             self.layernorm=LayerNorm(self.eps)
     def _specify_process_group(self, process_group):
@@ -483,15 +485,20 @@ class NormalizedDeconv(conv._ConvNd):
         self.process_group=None
         self.rf_size=rf_size
         self.rf_eps=rf_eps
+        
+
         if self.norm_type=='rfnorm':
             if self.kernel_size[0]==1 or self.groups>1:
-                self.norm_type=='none'
-                print('Remove rfnorm', self)
+                self.norm_type='layernorm'
+                print('switch rfnorm to layernorm', self)
             else:
+                self.rf_size=(self.kernel_size[0]-1)*self.dilation[0]+1
                 print('rfnorm for', self,'rf size:',self.rf_size)
         #    self.rfnorm=ReceptiveFieldNorm(min_scale=rf_size,eps=rf_eps,subsample=1)
         if self.norm_type=='layernorm':
             self.layernorm=LayerNorm(self.eps)
+
+
             
     def _specify_process_group(self, process_group):
         self.process_group = process_group
@@ -511,10 +518,10 @@ class NormalizedDeconv(conv._ConvNd):
         elif self.norm_type=='layernorm':
             x=self.layernorm(x)
 
-        elif self.norm_type=='rfnorm' and self.kernel_size[0]>1: #receptive field normalization
+        elif self.norm_type=='rfnorm': #receptive field normalization
             _,_,h,w=x.shape
             x=x.contiguous()
-            win_size=self.rf_size#(self.kernel_size[0]-1)*self.stride[0]+1
+            win_size=self.rf_size#(self.kernel_size[0]-1)*self.dilation[0]+1
             ones=torch.ones(1,1,h,w,dtype=x.dtype,device=x.device)
             M=box_filter(ones,win_size)    
             x_mean=box_filter(x,win_size).mean(dim=1,keepdim=True)/M
@@ -534,7 +541,7 @@ class NormalizedDeconv(conv._ConvNd):
             # 1. im2col: N x cols x pixels -> N*pixles x cols
             if self.kernel_size[0]>1:
                 X = torch.nn.functional.unfold(x, self.kernel_size,self.dilation,self.padding,self.sampling_stride).transpose(1, 2).contiguous()
-                if self.norm_type=='rfnorm' and self.kernel_size[0]>1: 
+                if self.norm_type=='rfnorm': 
                     X_std=X.std(dim=-1,keepdim=True)+self.rf_eps
                     X=(X-X.mean(dim=-1,keepdim=True))/X_std
                     
@@ -623,7 +630,7 @@ class NormalizedDeconv(conv._ConvNd):
 
         w = w.view(self.weight.shape)
         
-        if self.norm_type=='rfnorm' and self.kernel_size[0]>1:
+        if self.norm_type=='rfnorm':
             x= F.conv2d(x, w, None, self.stride, self.padding, self.dilation, self.groups)
             if rf_a.shape[-2:]!=x.shape[-2:]:
                 rf_a=F.interpolate(rf_a,size=x.shape[-2:],mode='bilinear')
@@ -674,6 +681,14 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
         self.process_group=None
         self.rf_size=rf_size
         self.rf_eps=rf_eps
+
+        if self.norm_type=='rfnorm':
+            if self.kernel_size[0]==1 or self.groups>1:
+                self.norm_type='layernorm'
+                print('Switch rfnorm to layernorm', self)
+            else:
+                self.rf_size=(self.kernel_size[0]-1)*self.dilation[0]+1
+                print('rfnorm for', self,'rf size:',self.rf_size)
         #if self.norm_type=='rfnorm':
         #    self.rfnorm=ReceptiveFieldNorm(min_scale=rf_size,eps=rf_eps,subsample=1)
         if self.norm_type=='layernorm':
@@ -699,7 +714,17 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
             x=self.layernorm(x)
 
         elif self.norm_type=='rfnorm': #receptive field normalization
-            x=self.rfnorm(x)
+            _,_,h,w=x.shape
+            x=x.contiguous()
+            win_size=self.rf_size#(self.kernel_size[0]-1)*self.stride[0]+1
+            ones=torch.ones(1,1,h,w,dtype=x.dtype,device=x.device)
+            M=box_filter(ones,win_size)    
+            x_mean=box_filter(x,win_size).mean(dim=1,keepdim=True)/M
+            x2_mean=box_filter(x**2,win_size).mean(dim=1,keepdim=True)/M
+            var = torch.clamp(x2_mean - x_mean**2,min=0.)
+            std = var.sqrt()+self.rf_eps
+            rf_a = 1/ std
+            rf_b = -x_mean/ std* self.weight.sum(dim=(1,2,3)).view(1,-1,1,1)
 
         if self.training:
             self.counter+=1
@@ -709,6 +734,9 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
                 #the adjoint of a conv operation is a full correlation operation. So pad first.
                 padding=(self.padding[0]+self.kernel_size[0]-1,self.padding[1]+self.kernel_size[1]-1)
                 X = torch.nn.functional.unfold(x, self.kernel_size,self.dilation,self.padding,self.sampling_stride).transpose(1, 2).contiguous()
+                if self.norm_type=='rfnorm': 
+                    X_std=X.std(dim=-1,keepdim=True)+self.rf_eps
+                    X=(X-X.mean(dim=-1,keepdim=True))/X_std
             else:
                 #channel wise
                 X = x.permute(0, 2, 3, 1).contiguous().view(-1, C)[::self.sampling_stride**2,:]
@@ -806,10 +834,19 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
         w=torch.flip(w.view(weight.shape),[2,3])
 
         output_padding = self._output_padding(x, output_size, self.stride, self.padding, self.kernel_size)
-        x = F.conv_transpose2d(
-            x, w, b, self.stride, self.padding,
-            output_padding, self.groups, self.dilation)
-
+        
+        if self.norm_type=='rfnorm':
+            x = F.conv_transpose2d(
+                x, w, None, self.stride, self.padding,
+                output_padding, self.groups, self.dilation)
+            if rf_a.shape[-2:]!=x.shape[-2:]:
+                rf_a=F.interpolate(rf_a,size=x.shape[-2:],mode='bilinear')
+                rf_b=F.interpolate(rf_b,size=x.shape[-2:],mode='bilinear')
+                x=x*rf_a+rf_b+b.view(1,-1,1,1)
+        else:
+            x = F.conv_transpose2d(
+                x, w, b, self.stride, self.padding,
+                output_padding, self.groups, self.dilation)
         return x
 
 

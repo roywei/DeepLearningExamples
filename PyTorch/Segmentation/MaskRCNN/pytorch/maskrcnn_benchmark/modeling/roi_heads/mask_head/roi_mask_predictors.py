@@ -21,8 +21,18 @@ class MaskRCNNC4Predictor(nn.Module):
             num_inputs = res2_out_channels * stage2_relative_factor
         if cfg.MODEL.ROI_MASK_HEAD.USE_DECONV:
             block=cfg.MODEL.DECONV.BLOCK
-            self.conv5_mask = NormalizedDeconvTransposed(num_inputs, dim_reduced, 2, 2, 0, block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
-            self.mask_fcn_logits = NormalizedDeconv(dim_reduced, num_classes, 1, 1, 0, block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
+            
+            if cfg.MODEL.DECONV.LAYERWISE_NORM:
+                norm_type=cfg.MODEL.DECONV.MASK_NORM_TYPE
+            else:
+                norm_type='none'
+                if cfg.MODEL.DECONV.MASK_NORM_TYPE=='rfnorm':
+                    self.mask_norm=ReceptiveFieldNorm(min_scale=cfg.MODEL.DECONV.MIN_RF_SCALE,eps=cfg.MODEL.DECONV.RF_EPS)
+                elif cfg.MODEL.DECONV.MASK_NORM_TYPE=='layernorm':
+                    self.mask_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
+
+            self.conv5_mask = NormalizedDeconvTransposed(num_inputs, dim_reduced, 2, 2, 0, block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=norm_type)
+            self.mask_fcn_logits = NormalizedDeconv(dim_reduced, num_classes, 1, 1, 0, block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=norm_type)
         else:
             self.conv5_mask = ConvTranspose2d(num_inputs, dim_reduced, 2, 2, 0)
             self.mask_fcn_logits = Conv2d(dim_reduced, num_classes, 1, 1, 0)
@@ -35,10 +45,6 @@ class MaskRCNNC4Predictor(nn.Module):
                 # corresponds to kaiming_normal_ in PyTorch
                 nn.init.kaiming_normal_(param, mode="fan_out", nonlinearity="relu")
 
-        if cfg.MODEL.DECONV.MASK_NORM_TYPE=='rfnorm':
-            self.mask_norm=ReceptiveFieldNorm(min_scale=cfg.MODEL.DECONV.MIN_RF_SCALE,eps=cfg.MODEL.DECONV.RF_EPS)
-        elif cfg.MODEL.DECONV.MASK_NORM_TYPE=='layernorm':
-            self.mask_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
 
 
     def forward(self, x):
