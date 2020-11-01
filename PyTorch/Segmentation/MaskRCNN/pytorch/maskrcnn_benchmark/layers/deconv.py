@@ -510,6 +510,7 @@ class NormalizedDeconv(conv._ConvNd):
             #rms=rfnorm_rms(x,win_size=self.kernel_size[0]*2+1,eps=self.rf_eps)
             #rms=self.rfnorm(x)
             _,_,h,w=x.shape
+            x=x.contiguous()
             win_size=self.kernel_size[0]
             ones=torch.ones(1,1,h,w,dtype=x.dtype,device=x.device)
             M=box_filter(ones,win_size)    
@@ -956,6 +957,7 @@ class LayerNorm(nn.Module):
 
 def rfnorm_rms(x,win_size,eps=1e-2):
     _,_,h,w=x.shape
+    x=x.contiguous()
     ones=torch.ones(1,1,h,w,dtype=x.dtype,device=x.device)
     M=box_filter(ones,win_size)    
     x2_mean=box_filter(x**2,win_size).mean(dim=1,keepdim=True)/M
