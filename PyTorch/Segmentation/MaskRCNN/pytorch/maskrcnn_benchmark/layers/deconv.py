@@ -441,7 +441,7 @@ class NormalizedDelinear(nn.Module):
 
 class NormalizedDeconv(conv._ConvNd):
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1,groups=1,bias=True, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,freeze=False,freeze_iter=100,norm_type='none',sync=False,rf_size=0.25,rf_eps=1e-4):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1,groups=1,bias=True, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,freeze=False,freeze_iter=100,norm_type='none',sync=False,rf_size=0.25,rf_eps=1e-2):
   
         self.momentum = momentum
         self.n_iter = n_iter
@@ -506,9 +506,20 @@ class NormalizedDeconv(conv._ConvNd):
         elif self.norm_type=='layernorm':
             x=self.layernorm(x)
 
-        elif self.norm_type=='rfnorm': #receptive field normalization
-            rms=rfnorm_rms(x,win_size=self.kernel_size[0],eps=self.rf_eps)
+        elif self.norm_type=='rfnorm' and self.kernel_size[0]>1: #receptive field normalization
+            #rms=rfnorm_rms(x,win_size=self.kernel_size[0]*2+1,eps=self.rf_eps)
             #rms=self.rfnorm(x)
+            _,_,h,w=x.shape
+            win_size=self.kernel_size[0]
+            ones=torch.ones(1,1,h,w,dtype=x.dtype,device=x.device)
+            M=box_filter(ones,win_size)    
+            x_mean=box_filter(x,win_size).mean(dim=1,keepdim=True)/M
+            x2_mean=box_filter(x**2,win_size).mean(dim=1,keepdim=True)/M
+            var = torch.clamp(x2_mean - x_mean**2,min=0.)+self.rf_eps
+            std = var.sqrt()
+            rf_a = 1/ std
+            rf_b = -x_mean/ std* self.weight.sum(dim=(1,2,3)).view(1,-1,1,1)
+
 
         if self.training:
             self.counter+=1
@@ -519,6 +530,10 @@ class NormalizedDeconv(conv._ConvNd):
             # 1. im2col: N x cols x pixels -> N*pixles x cols
             if self.kernel_size[0]>1:
                 X = torch.nn.functional.unfold(x, self.kernel_size,self.dilation,self.padding,self.sampling_stride).transpose(1, 2).contiguous()
+                if self.norm_type=='rfnorm' and self.kernel_size[0]>1: 
+                    X_std=X.std(dim=-1,keepdim=True)+self.rf_eps
+                    X=(X-X.mean(dim=-1,keepdim=True))/X_std
+                    
             else:
                 #channel wise
                 X = x.permute(0, 2, 3, 1).contiguous().view(-1, C)[::self.sampling_stride**2,:]
@@ -605,8 +620,8 @@ class NormalizedDeconv(conv._ConvNd):
         w = w.view(self.weight.shape)
         x= F.conv2d(x, w, b, self.stride, self.padding, self.dilation, self.groups)
         
-        if self.norm_type=='rfnorm':
-            x=x/F.interpolate(rms,size=x.shape[-2:],mode='bilinear')
+        if self.norm_type=='rfnorm' and self.kernel_size[0]>1:
+            x=(x-b)*F.interpolate(rf_a,size=x.shape[-2:],mode='bilinear')+F.interpolate(rf_b,size=x.shape[-2:],mode='bilinear')+b
 
         return x
 
@@ -947,7 +962,8 @@ def rfnorm_rms(x,win_size,eps=1e-2):
     rms = (x2_mean+eps).sqrt()
     return rms
 
-    
+
+
 
 if __name__=='__main__':
 
