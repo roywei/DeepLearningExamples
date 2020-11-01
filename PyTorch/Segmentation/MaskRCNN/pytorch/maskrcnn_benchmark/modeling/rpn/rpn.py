@@ -26,7 +26,7 @@ class RPNHead(nn.Module):
         """
         super(RPNHead, self).__init__()
         if cfg.MODEL.RPN.USE_DECONV:
-            self.conv = NormalizedDeconv(in_channels, in_channels, kernel_size=3, stride=1, padding=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
+            self.conv = NormalizedDeconv(in_channels, in_channels, kernel_size=3, stride=1, padding=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=cfg.MODEL.DECONV.RPN_NORM_TYPE)
             self.cls_logits = NormalizedDeconv(in_channels, num_anchors, kernel_size=1, stride=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
             self.bbox_pred = NormalizedDeconv(in_channels, num_anchors * 4, kernel_size=1, stride=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC)
 
@@ -43,12 +43,12 @@ class RPNHead(nn.Module):
             torch.nn.init.normal_(l.weight, std=0.01)
             torch.nn.init.constant_(l.bias, 0)
 
-
+        """
         if cfg.MODEL.DECONV.RPN_NORM_TYPE=='rfnorm':
             self.rpn_norm=ReceptiveFieldNorm(min_scale=cfg.MODEL.DECONV.MIN_RF_SCALE,eps=cfg.MODEL.DECONV.RF_EPS)
         elif cfg.MODEL.DECONV.RPN_NORM_TYPE=='layernorm':
             self.rpn_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
-
+        """
 
     def forward(self, x):
         logits = []

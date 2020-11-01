@@ -507,7 +507,8 @@ class NormalizedDeconv(conv._ConvNd):
             x=self.layernorm(x)
 
         elif self.norm_type=='rfnorm': #receptive field normalization
-            x=self.rfnorm(x)
+            rms=rfnorm_rms(x,win_size=self.kernel_size[0],eps=self.rf_eps)
+            #rms=self.rfnorm(x)
 
         if self.training:
             self.counter+=1
@@ -604,6 +605,8 @@ class NormalizedDeconv(conv._ConvNd):
         w = w.view(self.weight.shape)
         x= F.conv2d(x, w, b, self.stride, self.padding, self.dilation, self.groups)
         
+        if self.norm_type=='rfnorm':
+            x=x/F.interpolate(rms,size=x.shape[-2:],mode='bilinear')
 
         return x
 
@@ -850,28 +853,32 @@ def box_filter(x,k):
 
     return z
 
+
 class ReceptiveFieldNorm(nn.Module):
-    def __init__(self, min_scale=1/32, eps=1e-3,rate=4,subsample=3,coarse_to_fine=True):
+    def __init__(self, min_scale=1/20, max_scale=1/5, eps=1e-3,rate=4,subsample=3,coarse_to_fine=True):
         super(ReceptiveFieldNorm, self).__init__()
         self.eps=eps
         self.subsample=subsample
-        self.layernorm=LayerNorm(self.eps)
         self.min_scale=min_scale
+        self.max_scale=max_scale
         self.rate=rate
         self.coarse_to_fine=coarse_to_fine
     def forward(self, x, win_size=None):
-        _, C, H, W = x.size()
+        x=x.contiguous()# otherwise a silent bug will bite.
+        N, C, H, W = x.size()
         if self.coarse_to_fine:
-            scale=1.0/self.rate
+            scale=self.max_scale
         else:
             scale=self.min_scale
-
+        it=1
         while True:
             win_size=int(max(H,W)*scale)
-            if win_size<3 or win_size>=min(H,W):
-                x= self.layernorm(x)
-
+            if win_size<3 and it==1:
+                mean = x.mean(dim=(1,2,3),keepdim=True)
+                std = x.std(dim=(1,2,3),keepdim=True)+ self.eps
+                x = x /std- mean/std
             else:
+                #print('rfn',scale,win_size,x.shape,)
                 if self.subsample>1 and min(H,W)>self.subsample*10 and win_size>self.subsample*5:
                     xs=F.interpolate(x,scale_factor=1/self.subsample,mode='bilinear')
                     win_size=win_size//self.subsample
@@ -883,9 +890,9 @@ class ReceptiveFieldNorm(nn.Module):
 
                 ones=torch.ones(1,1,h,w,dtype=x.dtype,device=x.device)
 
-                N=box_filter(ones,win_size)    
-                x_mean=box_filter(xs,win_size).mean(dim=1,keepdim=True)/N
-                x2_mean=box_filter(xs**2,win_size).mean(dim=1,keepdim=True)/N
+                M=box_filter(ones,win_size)    
+                x_mean=box_filter(xs,win_size).mean(dim=1,keepdim=True)/M
+                x2_mean=box_filter(xs**2,win_size).mean(dim=1,keepdim=True)/M
                     
                 var = torch.clamp(x2_mean - x_mean**2,min=0.)+self.eps
                 std = var.sqrt()
@@ -893,8 +900,8 @@ class ReceptiveFieldNorm(nn.Module):
                 a = 1/ std
                 b = -x_mean/ std
 
-                mean_a=box_filter(a,win_size)/N
-                mean_b=box_filter(b,win_size)/N
+                mean_a=box_filter(a,win_size)/M
+                mean_b=box_filter(b,win_size)/M
 
                 if self.subsample>1:
                     mean_a=F.interpolate(mean_a,size=(H,W),mode='bilinear')
@@ -902,16 +909,19 @@ class ReceptiveFieldNorm(nn.Module):
 
                 x=mean_a*x+mean_b
 
+            it+=1
             if self.coarse_to_fine:
                 scale/=self.rate
                 if scale<self.min_scale:
                     break
             else:
                 scale*=self.rate
-                if scale>.99:
+                if scale>self.max_scale:
                     break
 
         return x
+
+
 
 class LayerNorm(nn.Module):
     def __init__(self, eps=1e-4):
@@ -929,7 +939,13 @@ class LayerNorm(nn.Module):
         x=x.view(x_shape)
         return x
 
-
+def rfnorm_rms(x,win_size,eps=1e-2):
+    _,_,h,w=x.shape
+    ones=torch.ones(1,1,h,w,dtype=x.dtype,device=x.device)
+    M=box_filter(ones,win_size)    
+    x2_mean=box_filter(x**2,win_size).mean(dim=1,keepdim=True)/M
+    rms = (x2_mean+eps).sqrt()
+    return rms
 
     
 
@@ -947,7 +963,7 @@ if __name__=='__main__':
     eps=1e-4
     min_scale=1/32
     subsample=1
-    coarse_to_fine=False
+    coarse_to_fine=True
     rate=3
 
     rfnorm=ReceptiveFieldNorm(min_scale=min_scale, eps=eps,subsample=subsample,rate=rate,coarse_to_fine=coarse_to_fine)
