@@ -484,7 +484,12 @@ class NormalizedDeconv(conv._ConvNd):
         self.rf_size=rf_size
         self.rf_eps=rf_eps
         if self.norm_type=='rfnorm':
-            self.rfnorm=ReceptiveFieldNorm(min_scale=rf_size,eps=rf_eps,subsample=1)
+            if self.kernel_size[0]==1 or self.groups>1:
+                self.norm_type=='none'
+                print('Remove rfnorm', self)
+            else:
+                print('rfnorm for', self,'rf size:',self.rf_size)
+        #    self.rfnorm=ReceptiveFieldNorm(min_scale=rf_size,eps=rf_eps,subsample=1)
         if self.norm_type=='layernorm':
             self.layernorm=LayerNorm(self.eps)
             
@@ -507,17 +512,15 @@ class NormalizedDeconv(conv._ConvNd):
             x=self.layernorm(x)
 
         elif self.norm_type=='rfnorm' and self.kernel_size[0]>1: #receptive field normalization
-            #rms=rfnorm_rms(x,win_size=self.kernel_size[0]*2+1,eps=self.rf_eps)
-            #rms=self.rfnorm(x)
             _,_,h,w=x.shape
             x=x.contiguous()
-            win_size=self.kernel_size[0]
+            win_size=self.rf_size#(self.kernel_size[0]-1)*self.stride[0]+1
             ones=torch.ones(1,1,h,w,dtype=x.dtype,device=x.device)
             M=box_filter(ones,win_size)    
             x_mean=box_filter(x,win_size).mean(dim=1,keepdim=True)/M
             x2_mean=box_filter(x**2,win_size).mean(dim=1,keepdim=True)/M
-            var = torch.clamp(x2_mean - x_mean**2,min=0.)+self.rf_eps
-            std = var.sqrt()
+            var = torch.clamp(x2_mean - x_mean**2,min=0.)
+            std = var.sqrt()+self.rf_eps
             rf_a = 1/ std
             rf_b = -x_mean/ std* self.weight.sum(dim=(1,2,3)).view(1,-1,1,1)
 
@@ -619,17 +622,22 @@ class NormalizedDeconv(conv._ConvNd):
             b = self.bias - (w @ (X_mean.view( -1,self.num_features,1))).view(self.bias.shape)
 
         w = w.view(self.weight.shape)
-        x= F.conv2d(x, w, b, self.stride, self.padding, self.dilation, self.groups)
         
         if self.norm_type=='rfnorm' and self.kernel_size[0]>1:
-            x=(x-b)*F.interpolate(rf_a,size=x.shape[-2:],mode='bilinear')+F.interpolate(rf_b,size=x.shape[-2:],mode='bilinear')+b
+            x= F.conv2d(x, w, None, self.stride, self.padding, self.dilation, self.groups)
+            if rf_a.shape[-2:]!=x.shape[-2:]:
+                rf_a=F.interpolate(rf_a,size=x.shape[-2:],mode='bilinear')
+                rf_b=F.interpolate(rf_b,size=x.shape[-2:],mode='bilinear')
+            x=x*rf_a+rf_b+b.view(1,-1,1,1)
+        else:
+            x= F.conv2d(x, w, b, self.stride, self.padding, self.dilation, self.groups)
 
         return x
 
 
 class NormalizedDeconvTransposed(conv._ConvTransposeNd):
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1,bias=True, dilation=1, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,norm_type='none',sync=False,rf_size=0.25,rf_eps=1e-4):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1,bias=True, dilation=1, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,norm_type='none',sync=False,rf_size=0.25,rf_eps=1e-2):
 
         self.momentum = momentum
         self.n_iter = n_iter
@@ -666,8 +674,8 @@ class NormalizedDeconvTransposed(conv._ConvTransposeNd):
         self.process_group=None
         self.rf_size=rf_size
         self.rf_eps=rf_eps
-        if self.norm_type=='rfnorm':
-            self.rfnorm=ReceptiveFieldNorm(min_scale=rf_size,eps=rf_eps,subsample=1)
+        #if self.norm_type=='rfnorm':
+        #    self.rfnorm=ReceptiveFieldNorm(min_scale=rf_size,eps=rf_eps,subsample=1)
         if self.norm_type=='layernorm':
             self.layernorm=LayerNorm(self.eps)
 

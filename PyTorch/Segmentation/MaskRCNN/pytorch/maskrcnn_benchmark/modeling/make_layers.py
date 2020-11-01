@@ -135,7 +135,7 @@ def make_fc(dim_in, hidden_dim, use_gn=False,use_gw=False,use_delinear=False,blo
     return fc
 
 
-def conv_with_kaiming_uniform(use_gn=False, use_gw=False,use_relu=False,use_deconv=False,block=64,sampling_stride=3,sync=False):
+def conv_with_kaiming_uniform(use_gn=False, use_gw=False,use_relu=False,use_deconv=False,block=64,sampling_stride=3,sync=False,norm_type='none',rf_size=31,):
     def make_conv(
         in_channels, out_channels, kernel_size, stride=1, dilation=1
     ):
@@ -151,6 +151,8 @@ def conv_with_kaiming_uniform(use_gn=False, use_gw=False,use_relu=False,use_deco
                 block=block,
                 sampling_stride=sampling_stride,
                 sync=sync,
+                norm_type=norm_type,
+                rf_size=rf_size,
             )
         else:
             conv = Conv2d(
