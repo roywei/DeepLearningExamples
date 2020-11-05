@@ -126,8 +126,8 @@ def train(cfg, local_rank, distributed, fp16, dllogger,args):
                 broadcast_buffers=False,
             )
 
-    
-    print(model)
+    if is_main_process():
+        print(model)
 
     arguments = {}
     arguments["iteration"] = 0
@@ -245,7 +245,7 @@ def save_path_formatter(args,cfg):
     args.wd=cfg.SOLVER.WEIGHT_DECAY
     args.accum_steps=cfg.SOLVER.ACCUMULATE_STEPS
     args.min_rf_scale=cfg.MODEL.DECONV.MIN_RF_SCALE
-
+    args.layerwise_norm=cfg.MODEL.DECONV.LAYERWISE_NORM
     args.pretrained=False
     if cfg.MODEL.WEIGHT:
         args.pretrained=True
@@ -274,6 +274,8 @@ def save_path_formatter(args,cfg):
     key_map['train_size']='size'
     key_map['pretrained']='pretrain'
     key_map['wd']='wd'
+    key_map['layerwise_norm']='lwn'
+
     #key_map['debug']='debug'
     if cfg.SOLVER.ACCUMULATE_GRAD:
         key_map['accum_steps']='cum'
