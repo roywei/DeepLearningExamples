@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from maskrcnn_benchmark.layers import Conv2d,NormalizedDeconv
-from maskrcnn_benchmark.layers import ConvTranspose2d,NormalizedDeconvTransposed,LayerNorm,ReceptiveFieldNorm
+from maskrcnn_benchmark.layers import ConvTranspose2d,NormalizedDeconvTransposed,LayerNorm
 
 
 class MaskRCNNC4Predictor(nn.Module):
@@ -26,10 +26,8 @@ class MaskRCNNC4Predictor(nn.Module):
                 norm_type=cfg.MODEL.DECONV.MASK_NORM_TYPE
             else:
                 norm_type='none'
-                if cfg.MODEL.DECONV.MASK_NORM_TYPE=='rfnorm':
-                    self.mask_norm=ReceptiveFieldNorm(min_scale=cfg.MODEL.DECONV.MIN_RF_SCALE,eps=cfg.MODEL.DECONV.RF_EPS)
-                elif cfg.MODEL.DECONV.MASK_NORM_TYPE=='layernorm':
-                    self.mask_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
+                if cfg.MODEL.DECONV.MASK_NORM_TYPE=='layernorm':
+                    self.mask_norm=LayerNorm(eps=cfg.MODEL.DECONV.EPS)
 
             self.conv5_mask = NormalizedDeconvTransposed(num_inputs, dim_reduced, 2, 2, 0, block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=norm_type)
             self.mask_fcn_logits = NormalizedDeconv(dim_reduced, num_classes, 1, 1, 0, block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=norm_type)

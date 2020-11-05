@@ -23,7 +23,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from maskrcnn_benchmark.layers import FrozenBatchNorm2d
-from maskrcnn_benchmark.layers import Conv2d,NormalizedDeconv,ReceptiveFieldNorm,LayerNorm
+from maskrcnn_benchmark.layers import Conv2d,NormalizedDeconv,LayerNorm
 from maskrcnn_benchmark.modeling.make_layers import group_norm, Whitening_IGWItN
 from maskrcnn_benchmark.utils.registry import Registry
 import functools
@@ -137,18 +137,12 @@ class ResNet(nn.Module):
         if cfg.MODEL.DECONV.LAYERWISE_NORM:
             pass
         else:
-            if cfg.MODEL.DECONV.STEM_NORM_TYPE=='rfnorm':
-                self.stem_norm=ReceptiveFieldNorm(min_scale=cfg.MODEL.DECONV.MIN_RF_SCALE,eps=cfg.MODEL.DECONV.RF_EPS)
-            elif cfg.MODEL.DECONV.STEM_NORM_TYPE=='layernorm':
-                self.stem_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
-            if cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE=='rfnorm':
-                self.bottleneck_norm=ReceptiveFieldNorm(min_scale=cfg.MODEL.DECONV.MIN_RF_SCALE,eps=cfg.MODEL.DECONV.RF_EPS)
-            elif cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE=='layernorm':
-                self.bottleneck_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
-            if cfg.MODEL.DECONV.FPN_NORM_TYPE=='rfnorm':
-                self.fpn_norm=ReceptiveFieldNorm(min_scale=cfg.MODEL.DECONV.MIN_RF_SCALE,eps=cfg.MODEL.DECONV.RF_EPS)
-            elif cfg.MODEL.DECONV.FPN_NORM_TYPE=='layernorm':
-                self.fpn_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
+            if cfg.MODEL.DECONV.STEM_NORM_TYPE=='layernorm':
+                self.stem_norm=LayerNorm(eps=cfg.MODEL.DECONV.EPS)
+            if cfg.MODEL.DECONV.BOTTLENECK_NORM_TYPE=='layernorm':
+                self.bottleneck_norm=LayerNorm(eps=cfg.MODEL.DECONV.EPS)
+            if cfg.MODEL.DECONV.FPN_NORM_TYPE=='layernorm':
+                self.fpn_norm=LayerNorm(eps=cfg.MODEL.DECONV.EPS)
 
 
     def _freeze_backbone(self, freeze_at):

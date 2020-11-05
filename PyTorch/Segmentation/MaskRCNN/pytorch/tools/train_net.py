@@ -247,8 +247,8 @@ def save_path_formatter(args,cfg):
     args.train_size=cfg.INPUT.MIN_SIZE_TRAIN
     args.wd=cfg.SOLVER.WEIGHT_DECAY
     args.accum_steps=cfg.SOLVER.ACCUMULATE_STEPS
-    args.min_rf_scale=cfg.MODEL.DECONV.MIN_RF_SCALE
     args.pretrained=False
+    args.layerwise_norm=cfg.MODEL.DECONV.LAYERWISE_NORM
     if cfg.MODEL.WEIGHT:
         args.pretrained=True
 

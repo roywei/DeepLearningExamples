@@ -1,6 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 from torch import nn
-from maskrcnn_benchmark.layers import NormalizedDelinear,LayerNorm,ReceptiveFieldNorm
+from maskrcnn_benchmark.layers import NormalizedDelinear,LayerNorm
 
 class FastRCNNPredictor(nn.Module):
     def __init__(self, config, pretrained=None):
@@ -20,7 +20,7 @@ class FastRCNNPredictor(nn.Module):
         else:
             norm_type='none'
             if config.MODEL.DECONV.BOX_NORM_TYPE=='rfnorm' or config.MODEL.DECONV.BOX_NORM_TYPE=='layernorm':
-                self.box_norm=LayerNorm(eps=config.MODEL.DECONV.RF_EPS)
+                self.box_norm=LayerNorm(eps=config.MODEL.DECONV.EPS)
 
         if config.MODEL.ROI_BOX_HEAD.USE_DECONV:
             block=config.MODEL.DECONV.BLOCK_FC
@@ -60,7 +60,7 @@ class FPNPredictor(nn.Module):
         else:
             norm_type='none'
             if cfg.MODEL.DECONV.BOX_NORM_TYPE=='rfnorm' or cfg.MODEL.DECONV.BOX_NORM_TYPE=='layernorm':
-                self.box_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
+                self.box_norm=LayerNorm(eps=cfg.MODEL.DECONV.EPS)
 
         if cfg.MODEL.ROI_BOX_HEAD.USE_DECONV:
             block=cfg.MODEL.DECONV.BLOCK_FC

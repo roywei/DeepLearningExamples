@@ -4,7 +4,7 @@ from torch.nn import functional as F
 
 from ..box_head.roi_box_feature_extractors import ResNet50Conv5ROIFeatureExtractor
 from maskrcnn_benchmark.modeling.poolers import Pooler
-from maskrcnn_benchmark.layers import Conv2d,LayerNorm,ReceptiveFieldNorm
+from maskrcnn_benchmark.layers import Conv2d,LayerNorm
 from maskrcnn_benchmark.modeling.make_layers import make_conv3x3
 
 
@@ -53,10 +53,8 @@ class MaskRCNNFPNFeatureExtractor(nn.Module):
             norm_type=cfg.MODEL.DECONV.MASK_NORM_TYPE
         else:
             norm_type='none'
-            if cfg.MODEL.DECONV.MASK_NORM_TYPE=='rfnorm':
-                self.mask_norm=ReceptiveFieldNorm(min_scale=cfg.MODEL.DECONV.MIN_RF_SCALE,eps=cfg.MODEL.DECONV.RF_EPS)
-            elif cfg.MODEL.DECONV.MASK_NORM_TYPE=='layernorm':
-                self.mask_norm=LayerNorm(eps=cfg.MODEL.DECONV.RF_EPS)
+            if cfg.MODEL.DECONV.MASK_NORM_TYPE=='layernorm':
+                self.mask_norm=LayerNorm(eps=cfg.MODEL.DECONV.EPS)
 
         for layer_idx, layer_features in enumerate(layers, 1):
             layer_name = "mask_fcn{}".format(layer_idx)
