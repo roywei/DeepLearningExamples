@@ -217,7 +217,10 @@ def test_model(cfg, model, distributed, iters_per_epoch, dllogger,args):
     if is_main_process(): 
         map_results, raw_results = results[0]
         bbox_map = map_results.results["bbox"]['AP']
-        segm_map = map_results.results["segm"]['AP']
+        if cfg.MODEL.MASK_ON:
+            segm_map = map_results.results["segm"]['AP']
+        else:
+            segm_map=0.0
         dllogger.log(step=(cfg.SOLVER.MAX_ITER, cfg.SOLVER.MAX_ITER / iters_per_epoch,), data={"BBOX_mAP": bbox_map, "MASK_mAP": segm_map})
         dllogger.log(step=tuple(), data={"BBOX_mAP": bbox_map, "MASK_mAP": segm_map})
 
@@ -245,7 +248,6 @@ def save_path_formatter(args,cfg):
     args.wd=cfg.SOLVER.WEIGHT_DECAY
     args.accum_steps=cfg.SOLVER.ACCUMULATE_STEPS
     args.min_rf_scale=cfg.MODEL.DECONV.MIN_RF_SCALE
-    args.layerwise_norm=cfg.MODEL.DECONV.LAYERWISE_NORM
     args.pretrained=False
     if cfg.MODEL.WEIGHT:
         args.pretrained=True
@@ -280,7 +282,6 @@ def save_path_formatter(args,cfg):
     if cfg.SOLVER.ACCUMULATE_GRAD:
         key_map['accum_steps']='cum'
 
-    key_map['min_rf_scale']='rf'
 
 
 
