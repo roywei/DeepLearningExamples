@@ -148,7 +148,7 @@ def train(cfg, local_rank, distributed, fp16, dllogger,args):
         start_iter=arguments["iteration"],
     )
     checkpoint_period = cfg.SOLVER.CHECKPOINT_PERIOD
-
+    args.iters_per_epoch=iters_per_epoch
     # set the callback function to evaluate and potentially
     # early exit each epoch
     if cfg.PER_EPOCH_EVAL:
