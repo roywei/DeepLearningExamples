@@ -9,6 +9,8 @@ import torch.distributed as dist
 
 from maskrcnn_benchmark.utils.comm import get_world_size,is_main_process
 from maskrcnn_benchmark.utils.metric_logger import MetricLogger
+from tqdm import tqdm
+from maskrcnn_benchmark.data.build import make_data_loader
 
 try:
     from apex import amp
@@ -59,6 +61,8 @@ def do_train(
 ):
     dllogger.log(step="PARAMETER", data={"train_start": True})
     meters = MetricLogger(delimiter="  ")
+    meters_val = MetricLogger(delimiter="  ")
+
     max_iter = len(data_loader)
     start_iter = arguments["iteration"]
     model.train()
@@ -129,6 +133,64 @@ def do_train(
         # per-epoch work (testing)
         if per_iter_end_callback_fn is not None:
             early_exit = per_iter_end_callback_fn(iteration=iteration)
+
+
+
+            data_loader_val = make_data_loader(cfg, is_train=False, is_distributed=args.distributed)
+
+
+            model.eval()
+                
+
+            # Should be one image for each GPU:
+            for iteration_val, (images_val, targets_val, _) in enumerate(tqdm(data_loader_val)):
+                if args.debug and iteration_val>10:
+                    break
+                images_val = images_val.to(cfg.MODEL.DEVICE)
+                targets_val = [target.to(cfg.MODEL.DEVICE) for target in targets_val]
+                loss_dict = model(images_val, targets_val)
+                losses = sum(loss for loss in loss_dict.values())
+                loss_dict_reduced = reduce_loss_dict(loss_dict)
+                losses_reduced = sum(loss for loss in loss_dict_reduced.values())
+                meters_val.update(loss=losses_reduced, **loss_dict_reduced)
+            
+            synchronize()
+
+            logger = logging.getLogger("maskrcnn_benchmark.trainer")
+
+            logger.info(
+                meters_val.delimiter.join(
+                    [
+                        "[Validation]: ",
+                        "eta: {eta}",
+                        "iter: {iter}",
+                        "{meters}",
+                        "lr: {lr:.6f}",
+                        "max mem: {memory:.0f}",
+                    ]
+                ).format(
+                    eta=eta_string,
+                    iter=iteration,
+                    meters=str(meters_val),
+                    lr=optimizer.param_groups[0]["lr"],
+                    memory=torch.cuda.max_memory_allocated() / 1024.0 / 1024.0,
+                )
+            )
+
+            for name, meter in meters_val.meters.items():
+                args.writer.add_scalar('EvalMetrics/'+name, meter.global_avg, iteration / args.iters_per_epoch)
+            
+            model.train()
+
+
+
+
+
+
+
+
+
+
             if early_exit:
                 break
 
