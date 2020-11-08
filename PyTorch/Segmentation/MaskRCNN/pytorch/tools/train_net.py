@@ -319,6 +319,8 @@ def main():
                         type=str,
                         )
     parser.add_argument("--debug", type=distutils.util.strtobool, default=False, help="debug")
+    parser.add_argument("--eval-loss", action="store_true", default=False, help="evaluate loss(very buggy)")
+
     parser.add_argument("--print-freq", type=int, default=100, help="print freq for tensorboard")
     parser.add_argument(
         "opts",

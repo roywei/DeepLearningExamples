@@ -44,7 +44,57 @@ def reduce_loss_dict(loss_dict):
         reduced_losses = {k: v for k, v in zip(loss_names, all_losses)}
     return reduced_losses
 
+def evaluator(cfg,args,model,device,iteration):
+    meters_val = MetricLogger(delimiter="  ")
 
+    data_loader_val = make_data_loader(cfg, is_train=False, is_distributed=False)[0]
+    model.eval()
+
+    model.train()
+        
+    with torch.no_grad():
+        # Should be one image for each GPU:
+        print('Calculating evaluation loss.')
+        for iteration_val, batch in enumerate(data_loader_val):
+            #if is_main_process():
+            #    print(iteration_val)
+            if args.debug and iteration_val>10:
+                break
+            images_val, targets_val, _ = batch
+            
+            skip_batch=False
+            nbox=[]
+            for t in targets_val:
+                nbox.append(len(t))
+                if len(t)<1:
+                    skip_batch=True
+                    break
+            if skip_batch:
+                continue
+            try:
+                print(iteration_val,nbox)
+                images_val = images_val.to(device)
+                targets_val = [target.to(device) for target in targets_val]
+                loss_dict = model(images_val, targets_val)
+                losses = sum(loss for loss in loss_dict.values())
+                loss_dict_reduced = reduce_loss_dict(loss_dict)
+                losses_reduced = sum(loss for loss in loss_dict_reduced.values())
+                meters_val.update(loss=losses_reduced, **loss_dict_reduced)
+            except:
+                print('Warning: ground truth error.')
+    
+        #synchronize()
+
+        if is_main_process():
+            print('Save evaluation loss to tensorboard.')
+            for name, meter in meters_val.meters.items():
+                print(name,meter.global_avg)
+                args.writer.add_scalar('EvalMetrics/'+name, meter.global_avg, iteration / args.iters_per_epoch)
+            print('Pass')
+
+
+
+        
 def do_train(
     model,
     data_loader,
@@ -62,7 +112,6 @@ def do_train(
 ):
     dllogger.log(step="PARAMETER", data={"train_start": True})
     meters = MetricLogger(delimiter="  ")
-    meters_val = MetricLogger(delimiter="  ")
 
     max_iter = len(data_loader)
     start_iter = arguments["iteration"]
@@ -107,7 +156,7 @@ def do_train(
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()
-            
+
         batch_time = time.time() - end
         end = time.time()
         meters.update(time=batch_time, data=data_time)
@@ -132,43 +181,13 @@ def do_train(
                 checkpointer.save("model_final", **arguments)
 
         # per-epoch work (testing)
+        if args.eval_loss and iteration > 0 and iteration % args.iters_per_epoch == 0:
+            print("Warning: this is very slow and buggy.")                
+            evaluator(cfg,args,model,device,iteration)
+            
+            
         if per_iter_end_callback_fn is not None:
-            #early_exit = per_iter_end_callback_fn(iteration=iteration)
-            early_exit=False
-            if iteration > 0 and iteration % args.iters_per_epoch == 0:
-                
-                if is_main_process():
-                    print('Calculating evaluation loss.')
-                data_loader_val = make_data_loader(cfg, is_train=False, is_distributed=args.distributed)[0]
-
-                model.train()
-                    
-                with torch.no_grad():
-                    # Should be one image for each GPU:
-                    for iteration_val, batch in enumerate(data_loader_val):
-                        print(iteration_val)
-                        if args.debug and iteration_val>10:
-                            break
-                        images_val, targets_val, _ = batch
-                        try:
-                            images_val = images_val.to(device)
-                            targets_val = [target.to(device) for target in targets_val]
-                            loss_dict = model(images_val, targets_val)
-                            losses = sum(loss for loss in loss_dict.values())
-                            loss_dict_reduced = reduce_loss_dict(loss_dict)
-                            losses_reduced = sum(loss for loss in loss_dict_reduced.values())
-                            meters_val.update(loss=losses_reduced, **loss_dict_reduced)
-                        except:
-                            print('Warning: ground truth error.')
-                
-                synchronize()
-
-                if is_main_process():
-                    print('Save evaluation loss to tensorboard.')
-                
-                for name, meter in meters_val.meters.items():
-                    args.writer.add_scalar('EvalMetrics/'+name, meter.global_avg, iteration / args.iters_per_epoch)
-                
+            early_exit = per_iter_end_callback_fn(iteration=iteration)
             
             if early_exit:
                 break
