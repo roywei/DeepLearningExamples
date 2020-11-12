@@ -801,10 +801,16 @@ def isqrt_newton_schulz_autograd(A, numIters,norm='norm',method='denman_beavers'
 
             Y = Y.mm(T)
             Z = T.mm(Z)
-    else:
+    elif method=='newton':
         for i in range(numIters):
             #Z =  1.5 * Z - 0.5* Z@ Z @ Z @ Y
             Z = torch.addmm(beta=1.5, input=Z, alpha=-0.5, mat1=torch.matrix_power(Z, 3), mat2=Y)
+    elif method=='inverse_newton':
+        for i in range(numIters):
+            T= (3*I - Y)/2
+            Y = torch.mm(torch.matrix_power(T, 2),Y)
+            Z = Z.mm(T)
+    
     #A_sqrt = Y* torch.sqrt(normA)
     A_isqrt =Z/ torch.sqrt(normA)
     return A_isqrt
