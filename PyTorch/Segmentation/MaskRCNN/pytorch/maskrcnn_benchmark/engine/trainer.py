@@ -178,9 +178,6 @@ def do_train(
                 checkpointer.save("model_final", **arguments)
 
         # per-epoch work (testing)
-        if args.eval_loss and iteration > 0 and iteration % args.iters_per_epoch == 0:
-            print("Warning: this is very slow and buggy.")                
-            evaluator(cfg,args,model,device,iteration)
             
             
         if per_iter_end_callback_fn is not None:
@@ -188,6 +185,10 @@ def do_train(
             
             if early_exit:
                 break
+
+        if args.eval_loss and iteration > 0 and iteration % args.iters_per_epoch == 0:
+            print("Warning: this is very slow and buggy.")                
+            evaluator(cfg,args,model,device,iteration)
 
     total_training_time = time.time() - start_training_time
     total_time_str = str(datetime.timedelta(seconds=total_training_time))
