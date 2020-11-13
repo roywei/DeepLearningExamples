@@ -23,7 +23,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from maskrcnn_benchmark.layers import FrozenBatchNorm2d
-from maskrcnn_benchmark.layers import Conv2d,NormalizedDeconv,LayerNorm
+from maskrcnn_benchmark.layers import Conv2d,Deconv,LayerNorm
 from maskrcnn_benchmark.modeling.make_layers import group_norm, Whitening_IGWItN
 from maskrcnn_benchmark.utils.registry import Registry
 import functools
@@ -380,14 +380,14 @@ class BottleneckWithDeconv(nn.Module):
         if in_channels != out_channels:
             down_stride = stride if dilation == 1 else 1
             self.downsample = nn.Sequential(
-                NormalizedDeconv(
+                Deconv(
                     in_channels, out_channels, 
                     kernel_size=1, stride=down_stride, bias=True,block=block,sampling_stride=sampling_stride,sync=sync,norm_type=norm_type
                 ),
             )
             for modules in [self.downsample,]:
                 for l in modules.modules():
-                    if isinstance(l, NormalizedDeconv):
+                    if isinstance(l, Deconv):
                         nn.init.kaiming_uniform_(l.weight, a=1)
 
         if dilation > 1:
@@ -398,7 +398,7 @@ class BottleneckWithDeconv(nn.Module):
         # stride in the 3x3 conv
         stride_1x1, stride_3x3 = (stride, 1) if stride_in_1x1 else (1, stride)
 
-        self.conv1 = NormalizedDeconv(
+        self.conv1 = Deconv(
             in_channels,
             bottleneck_channels,
             kernel_size=1,
@@ -412,7 +412,7 @@ class BottleneckWithDeconv(nn.Module):
 
         # TODO: specify init for the above
 
-        self.conv2 = NormalizedDeconv(
+        self.conv2 = Deconv(
             bottleneck_channels,
             bottleneck_channels,
             kernel_size=3,
@@ -427,7 +427,7 @@ class BottleneckWithDeconv(nn.Module):
             norm_type=norm_type
         )
 
-        self.conv3 = NormalizedDeconv(
+        self.conv3 = Deconv(
             bottleneck_channels, out_channels, kernel_size=1, bias=True,block=block,sampling_stride=sampling_stride,sync=sync,norm_type=norm_type
         )
 
@@ -488,7 +488,7 @@ class StemWithDeconv(nn.Module):
         else:
             norm_type='none'
 
-        self.conv1 = NormalizedDeconv(
+        self.conv1 = Deconv(
             3, out_channels, kernel_size=7, stride=2, padding=3, bias=True,block=block,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=norm_type
         )            
         for l in [self.conv1,]:

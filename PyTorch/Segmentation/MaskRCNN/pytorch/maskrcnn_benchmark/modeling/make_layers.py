@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from maskrcnn_benchmark.config import cfg
-from maskrcnn_benchmark.layers import Conv2d,NormalizedDelinear,NormalizedDeconv,GroupItN
+from maskrcnn_benchmark.layers import Conv2d,Delinear,Deconv,GroupItN
 from maskrcnn_benchmark.modeling.poolers import Pooler
 
 
@@ -70,7 +70,7 @@ def make_conv3x3(
     use_deconv=False,block=64,sampling_stride=3,sync=False,norm_type='none'
 ):
     if use_deconv:
-        conv = NormalizedDeconv(
+        conv = Deconv(
             in_channels, 
             out_channels, 
             kernel_size=3, 
@@ -128,7 +128,7 @@ def make_fc(dim_in, hidden_dim, use_gn=False,use_gw=False,use_delinear=False,blo
             return nn.Sequential(fc, Whitening_IGWItN(hidden_dim, dim=2)) # use fully coonected- Itn
 
     if use_delinear:
-        fc = NormalizedDelinear(dim_in, hidden_dim,block=block,sync=sync,norm_type=norm_type)
+        fc = Delinear(dim_in, hidden_dim,block=block,sync=sync,norm_type=norm_type)
     else:
         fc = nn.Linear(dim_in, hidden_dim)
     nn.init.kaiming_uniform_(fc.weight, a=1)
@@ -141,7 +141,7 @@ def conv_with_kaiming_uniform(use_gn=False, use_gw=False,use_relu=False,use_deco
         in_channels, out_channels, kernel_size, stride=1, dilation=1
     ):
         if use_deconv:
-            conv = NormalizedDeconv(
+            conv = Deconv(
                 in_channels, 
                 out_channels, 
                 kernel_size=kernel_size, 

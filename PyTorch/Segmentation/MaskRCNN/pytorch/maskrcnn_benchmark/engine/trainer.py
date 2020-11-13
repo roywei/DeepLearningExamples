@@ -48,9 +48,6 @@ def evaluator(cfg,args,model,device,iteration):
     meters_val = MetricLogger(delimiter="  ")
 
     data_loader_val = make_data_loader(cfg, is_train=False, is_distributed=False)[0]
-    model.eval()
-
-    model.train()
         
     with torch.no_grad():
         # Should be one image for each GPU:

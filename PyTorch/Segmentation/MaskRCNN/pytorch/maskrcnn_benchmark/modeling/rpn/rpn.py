@@ -9,7 +9,7 @@ from maskrcnn_benchmark.modeling.box_coder import BoxCoder
 from .loss import make_rpn_loss_evaluator
 from .anchor_generator import make_anchor_generator
 from .inference import make_rpn_postprocessor
-from maskrcnn_benchmark.layers import NormalizedDeconv,LayerNorm
+from maskrcnn_benchmark.layers import Deconv,LayerNorm
 
 @registry.RPN_HEADS.register("SingleConvRPNHead")
 class RPNHead(nn.Module):
@@ -34,9 +34,9 @@ class RPNHead(nn.Module):
                 self.rpn_norm=LayerNorm(eps=cfg.MODEL.DECONV.EPS)
 
         if cfg.MODEL.RPN.USE_DECONV:
-            self.conv = NormalizedDeconv(in_channels, in_channels, kernel_size=3, stride=1, padding=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=norm_type)
-            self.cls_logits = NormalizedDeconv(in_channels, num_anchors, kernel_size=1, stride=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=norm_type)
-            self.bbox_pred = NormalizedDeconv(in_channels, num_anchors * 4, kernel_size=1, stride=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=norm_type)
+            self.conv = Deconv(in_channels, in_channels, kernel_size=3, stride=1, padding=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=norm_type)
+            self.cls_logits = Deconv(in_channels, num_anchors, kernel_size=1, stride=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=norm_type)
+            self.bbox_pred = Deconv(in_channels, num_anchors * 4, kernel_size=1, stride=1, block=cfg.MODEL.DECONV.BLOCK,sampling_stride=cfg.MODEL.DECONV.STRIDE,sync=cfg.MODEL.DECONV.SYNC,norm_type=norm_type)
 
         else:
             self.conv = nn.Conv2d(

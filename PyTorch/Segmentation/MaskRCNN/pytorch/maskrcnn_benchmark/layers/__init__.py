@@ -16,5 +16,5 @@ from .group_whitening import GroupItN
 
 __all__ = ["nms", "roi_align", "ROIAlign", "roi_pool", "ROIPool", 
            "smooth_l1_loss", "Conv2d", "ConvTranspose2d", "interpolate", 
-           "FrozenBatchNorm2d","FastDeconv","convert_sync_nd","convert_sync_nd_ddp",'GroupItN',"NormalizedDeconv","NormalizedDeconvTransposed","NormalizedDelinear"
+           "FrozenBatchNorm2d","FastDeconv","convert_sync_nd","convert_sync_nd_ddp",'GroupItN',"Deconv","DeconvTransposed","Delinear"
            ]

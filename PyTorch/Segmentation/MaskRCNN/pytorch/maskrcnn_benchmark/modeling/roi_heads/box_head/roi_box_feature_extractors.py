@@ -8,7 +8,7 @@ from maskrcnn_benchmark.modeling.backbone import resnet
 from maskrcnn_benchmark.modeling.poolers import Pooler
 from maskrcnn_benchmark.modeling.make_layers import group_norm
 from maskrcnn_benchmark.modeling.make_layers import make_fc
-from maskrcnn_benchmark.layers import NormalizedDeconv,LayerNorm
+from maskrcnn_benchmark.layers import Deconv,LayerNorm
 
 @registry.ROI_BOX_FEATURE_EXTRACTORS.register("ResNet50Conv5ROIFeatureExtractor")
 class ResNet50Conv5ROIFeatureExtractor(nn.Module):
@@ -152,7 +152,7 @@ class FPNXconv1fcFeatureExtractor(nn.Module):
         for ix in range(num_stacked_convs):
             if cfg.MODEL.ROI_BOX_HEAD.USE_DECONV:
                 xconvs.append(
-                    NormalizedDeconv(
+                    Deconv(
                         in_channels,
                         conv_head_dim,
                         kernel_size=3,
@@ -187,7 +187,7 @@ class FPNXconv1fcFeatureExtractor(nn.Module):
         self.add_module("xconvs", nn.Sequential(*xconvs))
         for modules in [self.xconvs,]:
             for l in modules.modules():
-                if isinstance(l, nn.Conv2d) or isinstance(l,NormalizedDeconv):
+                if isinstance(l, nn.Conv2d) or isinstance(l,Deconv):
                     torch.nn.init.normal_(l.weight, std=0.01)
                     if not (use_gn or use_gw):
                         torch.nn.init.constant_(l.bias, 0)

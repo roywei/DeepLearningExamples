@@ -1,6 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 from torch import nn
-from maskrcnn_benchmark.layers import NormalizedDelinear,LayerNorm
+from maskrcnn_benchmark.layers import Delinear,LayerNorm
 
 class FastRCNNPredictor(nn.Module):
     def __init__(self, config, pretrained=None):
@@ -24,8 +24,8 @@ class FastRCNNPredictor(nn.Module):
 
         if config.MODEL.ROI_BOX_HEAD.USE_DECONV:
             block=config.MODEL.DECONV.BLOCK_FC
-            self.cls_score = NormalizedDelinear(num_inputs, num_classes, block=block,sync=config.MODEL.DECONV.SYNC,norm_type=norm_type)
-            self.bbox_pred = NormalizedDelinear(num_inputs, num_classes * 4, block=block,sync=config.MODEL.DECONV.SYNC,norm_type=norm_type)
+            self.cls_score = Delinear(num_inputs, num_classes, block=block,sync=config.MODEL.DECONV.SYNC,norm_type=norm_type)
+            self.bbox_pred = Delinear(num_inputs, num_classes * 4, block=block,sync=config.MODEL.DECONV.SYNC,norm_type=norm_type)
         else:
             self.cls_score = nn.Linear(num_inputs, num_classes)
             self.bbox_pred = nn.Linear(num_inputs, num_classes * 4)
@@ -64,8 +64,8 @@ class FPNPredictor(nn.Module):
 
         if cfg.MODEL.ROI_BOX_HEAD.USE_DECONV:
             block=cfg.MODEL.DECONV.BLOCK_FC
-            self.cls_score = NormalizedDelinear(representation_size, num_classes,block=block,sync=cfg.MODEL.DECONV.SYNC,norm_type=norm_type)
-            self.bbox_pred = NormalizedDelinear(representation_size, num_classes * 4,block=block,sync=cfg.MODEL.DECONV.SYNC,norm_type=norm_type)
+            self.cls_score = Delinear(representation_size, num_classes,block=block,sync=cfg.MODEL.DECONV.SYNC,norm_type=norm_type)
+            self.bbox_pred = Delinear(representation_size, num_classes * 4,block=block,sync=cfg.MODEL.DECONV.SYNC,norm_type=norm_type)
         else:
             self.cls_score = nn.Linear(representation_size, num_classes)
             self.bbox_pred = nn.Linear(representation_size, num_classes * 4)
